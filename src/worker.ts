@@ -215,6 +215,8 @@ export class Worker {
         return await this.#component(job, token, installation, hostKey);
       if (job.modal?.startsWith("dc:confirm-"))
         return await this.#decide(job, token, installation, hostKey);
+      if (job.modal?.startsWith("dc:ask-message:"))
+        return await this.#askMessage(job, token, installation, hostKey);
       if (job.command?.name === "datalayer-admin")
         return await this.#admin(job, token, installation, hostKey);
       return await say("This request is not one @Datalayer answers yet.");
@@ -310,6 +312,8 @@ export class Worker {
       key = { ...job.key, thread: original.id };
       messageId = original.id;
     }
+    // *Ask Datalayer*: the turn's provenance is the message asked about.
+    if (job.aboutMessageId) messageId = job.aboutMessageId;
     const threadKey = threadIdOf(key);
     const binding = await store.thread(threadKey);
     const explicit =
@@ -440,7 +444,10 @@ export class Worker {
       turn.binding?.deploymentUid === turn.applicationId &&
       Boolean(turn.binding.sessionUid);
     const generation = turn.binding?.generation ?? 0;
-    const inThread = Boolean(turn.key.parentId);
+    // Inside an existing thread, unless the key names the `@original` a
+    // thread would start from (a private *Ask Datalayer* asked in a thread
+    // has its own session there, never the thread's).
+    const inThread = Boolean(turn.key.parentId) && !job.threadFromOriginal;
     const request = {
       applicationId: turn.applicationId,
       externalEventId: `discord:${job.id}`,
@@ -1079,6 +1086,69 @@ export class Worker {
     }
     return say(
       `${WORDS.openHere} ${this.deps.webUrl.replace(/\/+$/, "")}${path}`,
+    );
+  }
+
+  /**
+   * *Ask Datalayer* on a message (§3.5, DC-206): the modal's submit, by the
+   * person who opened it, becomes their own private turn — the instruction
+   * and the message's text, quoted as what it is, with the message as the
+   * turn's provenance — answered only to them. Its row is answered once.
+   */
+  async #askMessage(
+    job: InteractionJob,
+    token: string,
+    installation: Installation,
+    hostKey: string,
+  ): Promise<void> {
+    const renderId = (job.modal ?? "").split(":")[2] ?? "";
+    const row = await this.deps.store.component(renderId);
+    if (
+      !row ||
+      row.kind !== "ask-message" ||
+      row.applicationId !== installation.applicationId ||
+      row.guildId !== installation.guildId
+    )
+      return this.#privately(job, token, "This request is no longer known.");
+    if (row.ownerId !== job.userId)
+      return this.#privately(job, token, WORDS.notYours);
+    const { content, messageId } = row.payload;
+    if (typeof content !== "string" || typeof messageId !== "string")
+      throw new Error(`An Ask Datalayer row names no message: ${row.renderId}`);
+    const instruction = (job.fields?.question ?? "").trim();
+    if (!instruction)
+      return this.#privately(job, token, "Say what Datalayer should do.");
+    // Linked first, so a refusal leaves the request to try again.
+    const link = await this.#linked(installation, hostKey, job.userId);
+    if (!link.linked) return this.#privately(job, token, WORDS.notLinked);
+    if (!(await this.deps.store.answerComponent(row.renderId, job.userId)))
+      return this.#privately(job, token, WORDS.alreadyAnswered);
+    const quoted = content
+      ? content
+          .split("\n")
+          .map((line) => `> ${line}`)
+          .join("\n")
+      : "> (a message without text)";
+    return this.#ask(
+      {
+        ...job,
+        aboutMessageId: messageId,
+        command: {
+          name: "ask",
+          options: {
+            private: true,
+            question: `${instruction}\n\nThe message, as written in Discord:\n${quoted}`,
+          },
+        },
+        ephemeral: true,
+        // Its own session, keyed on its private `@original`: never the
+        // thread's or the channel's, which others read.
+        key: { ...job.key, thread: "" },
+        threadFromOriginal: true,
+      },
+      token,
+      installation,
+      hostKey,
     );
   }
 

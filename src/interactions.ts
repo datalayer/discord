@@ -175,6 +175,11 @@ export type InteractionJob = Readonly<{
   /** A modal's fields, by custom id. */
   fields?: Readonly<Record<string, string>>;
   modal?: string;
+  /**
+   * The message *Ask Datalayer* asks about (§3.5, DC-206): set by the
+   * worker, never by the ingress; the turn's provenance names it.
+   */
+  aboutMessageId?: string;
 }>;
 
 /** A message answered inline, ephemeral. */
