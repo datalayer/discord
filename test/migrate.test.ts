@@ -5,11 +5,11 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 /**
- * The migrations on a throwaway PostgreSQL (`DISCORD_TEST_DATABASE_URL`,
+ * The migrations on a throwaway PostgreSQL (`DATALAYER_DISCORD_TEST_DATABASE_URL`,
  * never a cluster's): the shared host tables under `discord_`, then
  * `migrations/`, applied twice to the same end (DC-008).
  */
-const DATABASE_URL = process.env.DISCORD_TEST_DATABASE_URL;
+const DATABASE_URL = process.env.DATALAYER_DISCORD_TEST_DATABASE_URL;
 
 describe.runIf(Boolean(DATABASE_URL))("migrate on PostgreSQL", () => {
   let database: pg.Pool;

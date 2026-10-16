@@ -8,19 +8,19 @@ describe("the configuration (DC-008)", () => {
     const config = readConfig(ENVIRONMENT);
     expect(config).toMatchObject({
       DATALAYER_DELIVERY_POLL_SECONDS: 30,
-      DISCORD_TOKEN_ENCRYPTION_KEY_VERSION: 1,
+      DATALAYER_DISCORD_TOKEN_ENCRYPTION_KEY_VERSION: 1,
       PORT: 3000,
     });
     expect(config.DATABASE_URL).toBeUndefined();
   });
 
   it.each([
-    "DISCORD_APPLICATION_ID",
-    "DISCORD_PUBLIC_KEY",
-    "DISCORD_BOT_TOKEN",
-    "DISCORD_CLIENT_SECRET",
-    "DISCORD_TOKEN_ENCRYPTION_KEY",
-    "DISCORD_APP_URL",
+    "DATALAYER_DISCORD_APPLICATION_ID",
+    "DATALAYER_DISCORD_PUBLIC_KEY",
+    "DATALAYER_DISCORD_BOT_TOKEN",
+    "DATALAYER_DISCORD_CLIENT_SECRET",
+    "DATALAYER_DISCORD_TOKEN_ENCRYPTION_KEY",
+    "DATALAYER_DISCORD_APP_URL",
     "DATALAYER_API_URL",
     "DATALAYER_DISCORD_ROLE",
     "NODE_ENV",
@@ -36,14 +36,17 @@ describe("the configuration (DC-008)", () => {
 
   it("refuses a malformed id, key or address by name, with what it should be", () => {
     expect(() =>
-      readConfig({ ...ENVIRONMENT, DISCORD_APPLICATION_ID: "app" }),
-    ).toThrow(/DISCORD_APPLICATION_ID: a Discord id/);
+      readConfig({ ...ENVIRONMENT, DATALAYER_DISCORD_APPLICATION_ID: "app" }),
+    ).toThrow(/DATALAYER_DISCORD_APPLICATION_ID: a Discord id/);
     expect(() =>
-      readConfig({ ...ENVIRONMENT, DISCORD_PUBLIC_KEY: "ABC" }),
-    ).toThrow(/DISCORD_PUBLIC_KEY: 64 lowercase hex characters/);
+      readConfig({ ...ENVIRONMENT, DATALAYER_DISCORD_PUBLIC_KEY: "ABC" }),
+    ).toThrow(/DATALAYER_DISCORD_PUBLIC_KEY: 64 lowercase hex characters/);
     expect(() =>
-      readConfig({ ...ENVIRONMENT, DISCORD_APP_URL: "http://plain.example" }),
-    ).toThrow(/DISCORD_APP_URL/);
+      readConfig({
+        ...ENVIRONMENT,
+        DATALAYER_DISCORD_APP_URL: "http://plain.example",
+      }),
+    ).toThrow(/DATALAYER_DISCORD_APP_URL/);
   });
 
   it("refuses production, or a split role, without PostgreSQL", () => {

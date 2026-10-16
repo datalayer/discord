@@ -47,9 +47,9 @@ const limiter = new DiscordRateLimiter(systemClock, (fields) =>
 );
 const port = new HttpDiscordPort(
   {
-    applicationId: config.DISCORD_APPLICATION_ID,
-    botToken: config.DISCORD_BOT_TOKEN,
-    clientSecret: config.DISCORD_CLIENT_SECRET,
+    applicationId: config.DATALAYER_DISCORD_APPLICATION_ID,
+    botToken: config.DATALAYER_DISCORD_BOT_TOKEN,
+    clientSecret: config.DATALAYER_DISCORD_CLIENT_SECRET,
   },
   limiter,
 );
@@ -97,7 +97,7 @@ const enqueueDelivery = async (job: {
   );
 };
 const removal = {
-  applicationId: config.DISCORD_APPLICATION_ID,
+  applicationId: config.DATALAYER_DISCORD_APPLICATION_ID,
   cipher,
   hosts,
   logger,
@@ -109,10 +109,10 @@ const routes: Routes =
     ? {}
     : (() => {
         const oauth = oauthRoutes({
-          appUrl: config.DISCORD_APP_URL,
-          applicationId: config.DISCORD_APPLICATION_ID,
+          appUrl: config.DATALAYER_DISCORD_APP_URL,
+          applicationId: config.DATALAYER_DISCORD_APPLICATION_ID,
           cipher,
-          clientSecret: config.DISCORD_CLIENT_SECRET,
+          clientSecret: config.DATALAYER_DISCORD_CLIENT_SECRET,
           development: config.NODE_ENV !== "production",
           hosts,
           logger,
@@ -123,16 +123,16 @@ const routes: Routes =
         return {
           [`GET ${CALLBACK_PATH}`]: oauth.callback,
           "POST /discord/events": eventsRoute({
-            applicationId: config.DISCORD_APPLICATION_ID,
+            applicationId: config.DATALAYER_DISCORD_APPLICATION_ID,
             logger,
-            publicKey: config.DISCORD_PUBLIC_KEY,
+            publicKey: config.DATALAYER_DISCORD_PUBLIC_KEY,
             queue,
           }),
           "POST /discord/interactions": interactionsRoute({
-            applicationId: config.DISCORD_APPLICATION_ID,
+            applicationId: config.DATALAYER_DISCORD_APPLICATION_ID,
             cipher,
             logger,
-            publicKey: config.DISCORD_PUBLIC_KEY,
+            publicKey: config.DATALAYER_DISCORD_PUBLIC_KEY,
             queue,
             store,
           }),
@@ -159,7 +159,7 @@ let stopPoller = (): void => {};
 if (role !== "ingress") {
   const worker = new Worker({
     agent,
-    applicationId: config.DISCORD_APPLICATION_ID,
+    applicationId: config.DATALAYER_DISCORD_APPLICATION_ID,
     asPerson,
     cipher,
     clock: systemClock,

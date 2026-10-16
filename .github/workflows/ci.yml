@@ -22,7 +22,7 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DISCORD_TEST_DATABASE_URL: postgres://postgres:test@127.0.0.1:5432/discord
+      DATALAYER_DISCORD_TEST_DATABASE_URL: postgres://postgres:test@127.0.0.1:5432/discord
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -89,12 +89,12 @@ jobs:
           key="$(printf '0%.0s' $(seq 1 32) | base64)"
           docker run -d --name discord -p 3000:3000 \
             -e NODE_ENV=test -e DATALAYER_DISCORD_ROLE=all \
-            -e DISCORD_APPLICATION_ID="$application" \
-            -e DISCORD_PUBLIC_KEY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
-            -e DISCORD_BOT_TOKEN=ci-only-not-a-bot-token -e DISCORD_CLIENT_SECRET=ci-only \
-            -e DISCORD_TOKEN_ENCRYPTION_KEY="$key" \
-            -e DISCORD_TOKEN_ENCRYPTION_KEY_VERSION=1 \
-            -e DISCORD_APP_URL=https://discord.example -e DATALAYER_API_URL=https://r1.example \
+            -e DATALAYER_DISCORD_APPLICATION_ID="$application" \
+            -e DATALAYER_DISCORD_PUBLIC_KEY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+            -e DATALAYER_DISCORD_BOT_TOKEN=ci-only-not-a-bot-token -e DATALAYER_DISCORD_CLIENT_SECRET=ci-only \
+            -e DATALAYER_DISCORD_TOKEN_ENCRYPTION_KEY="$key" \
+            -e DATALAYER_DISCORD_TOKEN_ENCRYPTION_KEY_VERSION=1 \
+            -e DATALAYER_DISCORD_APP_URL=https://discord.example -e DATALAYER_API_URL=https://r1.example \
             -e DATALAYER_WEB_URL=https://datalayer.example \
             datalayer-discord:ci
           for i in $(seq 1 30); do

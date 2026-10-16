@@ -38,9 +38,9 @@ export type Resources = Readonly<{
  */
 export function createResources(config: Config): Resources {
   const cipher = new SecretCipher(
-    config.DISCORD_TOKEN_ENCRYPTION_KEY,
-    config.DISCORD_TOKEN_ENCRYPTION_KEY_VERSION,
-    "DISCORD_TOKEN_ENCRYPTION_KEY",
+    config.DATALAYER_DISCORD_TOKEN_ENCRYPTION_KEY,
+    config.DATALAYER_DISCORD_TOKEN_ENCRYPTION_KEY_VERSION,
+    "DATALAYER_DISCORD_TOKEN_ENCRYPTION_KEY",
   );
   if (!config.DATABASE_URL) {
     const queue = new MemoryWorkQueue<DiscordJob>();

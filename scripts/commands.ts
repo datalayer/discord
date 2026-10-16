@@ -9,7 +9,7 @@ import { commandDrift, parseCommands } from "../src/commands.js";
  * application has registered and fails on any difference; with neither, one
  * bulk overwrite (`PUT /applications/{id}/commands`, or the guild's with
  * `--guild <id>` in development) registers them. Reads
- * DISCORD_APPLICATION_ID and DISCORD_BOT_TOKEN; prints neither.
+ * DATALAYER_DISCORD_APPLICATION_ID and DATALAYER_DISCORD_BOT_TOKEN; prints neither.
  */
 const API = "https://discord.com/api/v10";
 const argv = process.argv.slice(2);
@@ -31,10 +31,12 @@ if (argv.includes("--schema")) {
   console.info(`${commands.length} commands defined, within Discord's limits.`);
   process.exit(0);
 }
-const application = process.env.DISCORD_APPLICATION_ID;
-const token = process.env.DISCORD_BOT_TOKEN;
+const application = process.env.DATALAYER_DISCORD_APPLICATION_ID;
+const token = process.env.DATALAYER_DISCORD_BOT_TOKEN;
 if (!application || !token) {
-  console.error("DISCORD_APPLICATION_ID and DISCORD_BOT_TOKEN are required.");
+  console.error(
+    "DATALAYER_DISCORD_APPLICATION_ID and DATALAYER_DISCORD_BOT_TOKEN are required.",
+  );
   process.exit(1);
 }
 const url = `${API}/applications/${application}${guild ? `/guilds/${guild}` : ""}/commands`;

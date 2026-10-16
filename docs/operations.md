@@ -7,22 +7,22 @@ one.
 
 ## Settings
 
-| Setting                                | Required                                     | What it is                                                                                                                       |
-| -------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `NODE_ENV`                             | yes                                          | `development`, `test` or `production`.                                                                                           |
-| `PORT`                                 | no (3000)                                    | The HTTP port every role listens on.                                                                                             |
-| `DATALAYER_DISCORD_ROLE`               | yes                                          | `ingress` (Discord's signed requests, persisted), `worker` (the durable queue, the outbox) or `all` (both: development, tests).  |
-| `DATABASE_URL`                         | in production, and for `ingress` or `worker` | The service's PostgreSQL (CNPG on r1). Without it, development runs on memory.                                                   |
-| `DISCORD_APPLICATION_ID`               | yes                                          | The Discord application's id (a snowflake).                                                                                      |
-| `DISCORD_PUBLIC_KEY`                   | yes                                          | Its Ed25519 public key, 64 hex characters: every interaction is verified with it.                                                |
-| `DISCORD_BOT_TOKEN`                    | yes                                          | The bot token. Kept in the `datalayer-discord-env` Secret and in memory only; never in the database, a log, a metric or a trace. |
-| `DISCORD_CLIENT_SECRET`                | yes                                          | The OAuth2 client secret, for the install's code exchange.                                                                       |
-| `DISCORD_TOKEN_ENCRYPTION_KEY`         | yes                                          | Base64 of 32 bytes: the AES-256-GCM key host keys and interaction tokens are encrypted with at rest.                             |
-| `DISCORD_TOKEN_ENCRYPTION_KEY_VERSION` | yes                                          | The key's version, kept beside every value it encrypted.                                                                         |
-| `DISCORD_APP_URL`                      | yes                                          | This service's public HTTPS origin: the install page, the OAuth callback and the delivery webhook live under it.                 |
-| `DATALAYER_API_URL`                    | yes                                          | Datalayer's API origin (HTTPS), where ai-agents' host routes answer (r1 for the pilot).                                          |
-| `DATALAYER_WEB_URL`                    | yes                                          | Datalayer's web origin (HTTPS): `/hosts/link`, `/hosts/open`, `/docs/discord`.                                                   |
-| `DATALAYER_DELIVERY_POLL_SECONDS`      | no (30)                                      | How often a worker reads the outbox; 0 never.                                                                                    |
+| Setting                                          | Required                                     | What it is                                                                                                                       |
+| ------------------------------------------------ | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                                       | yes                                          | `development`, `test` or `production`.                                                                                           |
+| `PORT`                                           | no (3000)                                    | The HTTP port every role listens on.                                                                                             |
+| `DATALAYER_DISCORD_ROLE`                         | yes                                          | `ingress` (Discord's signed requests, persisted), `worker` (the durable queue, the outbox) or `all` (both: development, tests).  |
+| `DATABASE_URL`                                   | in production, and for `ingress` or `worker` | The service's PostgreSQL (CNPG on r1). Without it, development runs on memory.                                                   |
+| `DATALAYER_DISCORD_APPLICATION_ID`               | yes                                          | The Discord application's id (a snowflake).                                                                                      |
+| `DATALAYER_DISCORD_PUBLIC_KEY`                   | yes                                          | Its Ed25519 public key, 64 hex characters: every interaction is verified with it.                                                |
+| `DATALAYER_DISCORD_BOT_TOKEN`                    | yes                                          | The bot token. Kept in the `datalayer-discord-env` Secret and in memory only; never in the database, a log, a metric or a trace. |
+| `DATALAYER_DISCORD_CLIENT_SECRET`                | yes                                          | The OAuth2 client secret, for the install's code exchange.                                                                       |
+| `DATALAYER_DISCORD_TOKEN_ENCRYPTION_KEY`         | yes                                          | Base64 of 32 bytes: the AES-256-GCM key host keys and interaction tokens are encrypted with at rest.                             |
+| `DATALAYER_DISCORD_TOKEN_ENCRYPTION_KEY_VERSION` | yes                                          | The key's version, kept beside every value it encrypted.                                                                         |
+| `DATALAYER_DISCORD_APP_URL`                      | yes                                          | This service's public HTTPS origin: the install page, the OAuth callback and the delivery webhook live under it.                 |
+| `DATALAYER_API_URL`                              | yes                                          | Datalayer's API origin (HTTPS), where ai-agents' host routes answer (r1 for the pilot).                                          |
+| `DATALAYER_WEB_URL`                              | yes                                          | Datalayer's web origin (HTTPS): `/hosts/link`, `/hosts/open`, `/docs/discord`.                                                   |
+| `DATALAYER_DELIVERY_POLL_SECONDS`                | no (30)                                      | How often a worker reads the outbox; 0 never.                                                                                    |
 
 `DATALAYER_DISCORD_LOG_SALT` (optional) salts the pseudonyms of logs and
 spans; by default `datalayer-discord`.

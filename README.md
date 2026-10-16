@@ -33,7 +33,7 @@ Do the steps below once for each application. Keep every value you copy in a pas
 ### 3. General Information
 
 1. **App icon** (at least 512×512) and **Description**: _Ask your Datalayer applications from Discord._
-2. Copy **Application ID** → `DISCORD_APPLICATION_ID` and **Public Key** → `DISCORD_PUBLIC_KEY` (64 hex characters). Neither is secret, but each belongs to its application.
+2. Copy **Application ID** → `DATALAYER_DISCORD_APPLICATION_ID` and **Public Key** → `DATALAYER_DISCORD_PUBLIC_KEY` (64 hex characters). Neither is secret, but each belongs to its application.
 3. **Terms of Service URL:** `https://datalayer.ai/terms`. **Privacy Policy URL:** `https://datalayer.ai/privacy`.
 4. Leave **Interactions Endpoint URL** empty for now: Discord saves it only once the running service answers its PING (step 8).
 5. **Save Changes**.
@@ -41,19 +41,19 @@ Do the steps below once for each application. Keep every value you copy in a pas
 ### 4. Installation
 
 1. **Installation Contexts:** **Guild Install** only. Untick **User Install**.
-2. **Install Link:** **Custom URL**, `<DISCORD_APP_URL>/discord/install` (development: your tunnel origin, step 7; the pilot: the r1 host). A _Discord Provided Link_ cannot carry Datalayer's bind code, and _None_ would bar the App Directory later.
+2. **Install Link:** **Custom URL**, `<DATALAYER_DISCORD_APP_URL>/discord/install` (development: your tunnel origin, step 7; the pilot: the r1 host). A _Discord Provided Link_ cannot carry Datalayer's bind code, and _None_ would bar the App Directory later.
 3. **Save Changes**.
 
 ### 5. OAuth2
 
-1. **Client Secret → Reset Secret**, confirm, and copy it → `DISCORD_CLIENT_SECRET`. Discord shows it once; a reset ends the previous one.
-2. **Redirects → Add Redirect:** `<DISCORD_APP_URL>/discord/oauth/callback`, exactly (scheme, host and path). **Save Changes**.
+1. **Client Secret → Reset Secret**, confirm, and copy it → `DATALAYER_DISCORD_CLIENT_SECRET`. Discord shows it once; a reset ends the previous one.
+2. **Redirects → Add Redirect:** `<DATALAYER_DISCORD_APP_URL>/discord/oauth/callback`, exactly (scheme, host and path). **Save Changes**.
 3. Do not build a URL with the _OAuth2 URL Generator_: the service builds the install link itself (`bot applications.commands`, guild install, permissions `309237763136`, computed in `src/permissions.ts`).
 
 ### 6. Bot
 
 1. **Username**: `Datalayer Dev` or `Datalayer`, and the same icon.
-2. **Reset Token**, confirm, and copy it → `DISCORD_BOT_TOKEN`. Discord shows it once; a reset ends the previous one.
+2. **Reset Token**, confirm, and copy it → `DATALAYER_DISCORD_BOT_TOKEN`. Discord shows it once; a reset ends the previous one.
 3. **Public Bot:** off for `Datalayer Dev` (only the team adds it), on for `Datalayer` (any server owner adds it from the Ship tab).
 4. **Requires OAuth2 Code Grant:** **on**, so every install passes through the service's callback, which binds the server to Datalayer.
 5. **Privileged Gateway Intents:** all three **off** (_Presence_, _Server Members_, _Message Content_; ADR 0003).
@@ -70,12 +70,12 @@ cd tech/datalayer/discord
 cloudflared tunnel --url http://localhost:3000   # or: ngrok http 3000
 ```
 
-Keep the tunnel running and take its `https://…` origin as `DISCORD_APP_URL` (a new origin at each restart: update steps 4, 5 and 8 when it changes). In a second terminal, create `.env` (ignored by Git), readable by you alone, with a fresh encryption key that is never printed:
+Keep the tunnel running and take its `https://…` origin as `DATALAYER_DISCORD_APP_URL` (a new origin at each restart: update steps 4, 5 and 8 when it changes). In a second terminal, create `.env` (ignored by Git), readable by you alone, with a fresh encryption key that is never printed:
 
 ```bash
 cd tech/datalayer/discord
 umask 077
-printf 'DISCORD_TOKEN_ENCRYPTION_KEY=%s\n' "$(openssl rand -base64 32)" > .env
+printf 'DATALAYER_DISCORD_TOKEN_ENCRYPTION_KEY=%s\n' "$(openssl rand -base64 32)" > .env
 ```
 
 Then open `.env` in an editor and add the rest, pasting each value from the password manager (never `echo` one: it would stay in the shell's history):
@@ -84,12 +84,12 @@ Then open `.env` in an editor and add the rest, pasting each value from the pass
 NODE_ENV=development
 PORT=3000
 DATALAYER_DISCORD_ROLE=all
-DISCORD_APPLICATION_ID=
-DISCORD_PUBLIC_KEY=
-DISCORD_BOT_TOKEN=
-DISCORD_CLIENT_SECRET=
-DISCORD_TOKEN_ENCRYPTION_KEY_VERSION=1
-DISCORD_APP_URL=https://<your tunnel>
+DATALAYER_DISCORD_APPLICATION_ID=
+DATALAYER_DISCORD_PUBLIC_KEY=
+DATALAYER_DISCORD_BOT_TOKEN=
+DATALAYER_DISCORD_CLIENT_SECRET=
+DATALAYER_DISCORD_TOKEN_ENCRYPTION_KEY_VERSION=1
+DATALAYER_DISCORD_APP_URL=https://<your tunnel>
 DATALAYER_API_URL=https://r1.datalayer.run
 DATALAYER_WEB_URL=https://datalayer.ai
 ```
@@ -103,7 +103,7 @@ curl --fail https://<your tunnel>/healthz
 
 In the monorepo, agent-runtimes' `watch:lib` serves `lib/portable`; in a standalone clone, run `npm install` then `npm run fetch:agent-runtimes` first. The service refuses to start and names each missing or malformed setting.
 
-**The r1 pilot:** put the four values in the r1 Secret `datalayer-discord-env` of the `datalayer-api` namespace, under the setting names (`DISCORD_APPLICATION_ID`, `DISCORD_PUBLIC_KEY`, `DISCORD_BOT_TOKEN`, `DISCORD_CLIENT_SECRET`), from a file that never enters Git and is removed after:
+**The r1 pilot:** put the four values in the r1 Secret `datalayer-discord-env` of the `datalayer-api` namespace, under the setting names (`DATALAYER_DISCORD_APPLICATION_ID`, `DATALAYER_DISCORD_PUBLIC_KEY`, `DATALAYER_DISCORD_BOT_TOKEN`, `DATALAYER_DISCORD_CLIENT_SECRET`), from a file that never enters Git and is removed after:
 
 ```bash
 kubectl -n datalayer-api create secret generic datalayer-discord-env \
@@ -115,10 +115,10 @@ Then set `DATALAYER_DISCORD_ENABLED=true` in `~/.datalayer/datalayerrc-r1` and r
 
 ### 8. Enter the endpoints
 
-With the service answering on `<DISCORD_APP_URL>`:
+With the service answering on `<DATALAYER_DISCORD_APP_URL>`:
 
-1. **General Information → Interactions Endpoint URL:** `<DISCORD_APP_URL>/discord/interactions`. **Save Changes**: Discord sends a PING and a request with a bad signature; it saves only when the service answers the first and refuses the second. An error here means the service is not reachable, or runs with another application's public key.
-2. **Webhooks → Endpoint URL:** `<DISCORD_APP_URL>/discord/events`; switch **Events** on and tick **Application Authorized** only (_Application Deauthorized_ names no server). **Save Changes** (Discord PINGs it too).
+1. **General Information → Interactions Endpoint URL:** `<DATALAYER_DISCORD_APP_URL>/discord/interactions`. **Save Changes**: Discord sends a PING and a request with a bad signature; it saves only when the service answers the first and refuses the second. An error here means the service is not reachable, or runs with another application's public key.
+2. **Webhooks → Endpoint URL:** `<DATALAYER_DISCORD_APP_URL>/discord/events`; switch **Events** on and tick **Application Authorized** only (_Application Deauthorized_ names no server). **Save Changes** (Discord PINGs it too).
 3. Check that **Installation → Custom URL** and **OAuth2 → Redirects** carry the same origin.
 
 ### 9. Register the commands
@@ -132,11 +132,11 @@ npm run commands:register -- --guild <server id>       # development: one server
 npm run commands:check -- --guild <server id>          # what Discord has equals the file
 ```
 
-Server commands appear at once but not in direct messages. For the pilot, register globally (no `--guild`) and check with `npm run commands:check`. The script reads `DISCORD_APPLICATION_ID` and `DISCORD_BOT_TOKEN` and prints neither.
+Server commands appear at once but not in direct messages. For the pilot, register globally (no `--guild`) and check with `npm run commands:check`. The script reads `DATALAYER_DISCORD_APPLICATION_ID` and `DATALAYER_DISCORD_BOT_TOKEN` and prints neither.
 
 ### 10. Add @Datalayer to a server and try it
 
-1. An install starts in Datalayer, never from the portal: open the application in the Studio, **Ship →** the Discord card **→ Add @Datalayer to a server**. It sets up a host installation and opens `<DISCORD_APP_URL>/discord/install?datalayer_bind=…`, good once, for ten minutes. While the service is unpublished the card offers no link (`DISCORD_APP_URL = ''` in the landing's `src/views/studio/apps/appDiscordSurface.ts`): for development, set it to your tunnel origin in a local landing, and never commit that.
+1. An install starts in Datalayer, never from the portal: open the application in the Studio, **Ship →** the Discord card **→ Add @Datalayer to a server**. It sets up a host installation and opens `<DATALAYER_DISCORD_APP_URL>/discord/install?datalayer_bind=…`, good once, for ten minutes. While the service is unpublished the card offers no link (`DATALAYER_DISCORD_APP_URL = ''` in the landing's `src/views/studio/apps/appDiscordSurface.ts`): for development, set it to your tunnel origin in a local landing, and never commit that.
 2. Discord's authorization page lists the permissions; pick the test server and **Authorize**. The callback binds the server at Datalayer and keeps its host key encrypted. A page saying the install did not finish means the code was spent or expired: start again from the Ship tab.
 3. In the server, run `/datalayer link`, open the link it answers (only you see it), sign in to Datalayer and choose **Link**.
 4. `/datalayer status` shows the connection, your link and the application. Then `/ask question: Summarize the launch risks` in a channel: the answer comes in a thread started from it.
@@ -146,16 +146,16 @@ User and administrator documentation is published at [datalayer.ai/docs/discord]
 
 ### When something does not work
 
-| Symptom                                         | Check                                                                                                                             |
-| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| The portal will not save the interactions URL   | The service runs, `/healthz` answers through the tunnel, and `DISCORD_PUBLIC_KEY` is this application's.                          |
-| _Discord sent no code_ after authorizing        | **Bot → Requires OAuth2 Code Grant** is off: switch it on.                                                                        |
-| _Invalid OAuth2 redirect_uri_ on Discord's page | **OAuth2 → Redirects** must be `<DISCORD_APP_URL>/discord/oauth/callback` exactly, with the same origin as `DISCORD_APP_URL`.     |
-| The install page refuses                        | Start from the Ship tab: its code works once, for ten minutes.                                                                    |
-| The commands do not appear                      | Registered with `--guild` for that server? `npm run commands:check -- --guild <id>`; server commands never reach direct messages. |
-| `/ask` says a permission is missing             | A channel override denies one of the permissions of `src/permissions.ts` to the bot; the answer names it.                         |
-| Everything is forgotten after a restart         | Development without `DATABASE_URL` keeps memory only: set it and run `npm run migrate`.                                           |
-| The service will not start                      | Its first line names each missing or malformed setting ([`docs/operations.md`](docs/operations.md)).                              |
+| Symptom                                         | Check                                                                                                                                             |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The portal will not save the interactions URL   | The service runs, `/healthz` answers through the tunnel, and `DATALAYER_DISCORD_PUBLIC_KEY` is this application's.                                |
+| _Discord sent no code_ after authorizing        | **Bot → Requires OAuth2 Code Grant** is off: switch it on.                                                                                        |
+| _Invalid OAuth2 redirect_uri_ on Discord's page | **OAuth2 → Redirects** must be `<DATALAYER_DISCORD_APP_URL>/discord/oauth/callback` exactly, with the same origin as `DATALAYER_DISCORD_APP_URL`. |
+| The install page refuses                        | Start from the Ship tab: its code works once, for ten minutes.                                                                                    |
+| The commands do not appear                      | Registered with `--guild` for that server? `npm run commands:check -- --guild <id>`; server commands never reach direct messages.                 |
+| `/ask` says a permission is missing             | A channel override denies one of the permissions of `src/permissions.ts` to the bot; the answer names it.                                         |
+| Everything is forgotten after a restart         | Development without `DATABASE_URL` keeps memory only: set it and run `npm run migrate`.                                                           |
+| The service will not start                      | Its first line names each missing or malformed setting ([`docs/operations.md`](docs/operations.md)).                                              |
 
 ## Checks
 

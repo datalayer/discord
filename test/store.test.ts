@@ -24,11 +24,11 @@ import {
 
 /**
  * The store's behavior, on memory and on a throwaway PostgreSQL
- * (`DISCORD_TEST_DATABASE_URL`, never a cluster's): the insert-first turn
+ * (`DATALAYER_DISCORD_TEST_DATABASE_URL`, never a cluster's): the insert-first turn
  * claim under concurrency, components answered once, the install state spent
  * once, a person forgotten, a removed server purged (DC-105, DC-106, DC-107).
  */
-const DATABASE_URL = process.env.DISCORD_TEST_DATABASE_URL;
+const DATABASE_URL = process.env.DATALAYER_DISCORD_TEST_DATABASE_URL;
 
 function contract(name: string, make: () => Promise<DiscordStore>) {
   describe(name, () => {

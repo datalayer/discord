@@ -25,18 +25,21 @@ const schema = z
     DATALAYER_DISCORD_ROLE: z.enum(["all", "ingress", "worker"]),
     /** The durable store; only development and tests may run without one. */
     DATABASE_URL: secret.optional(),
-    DISCORD_APPLICATION_ID: snowflake,
+    DATALAYER_DISCORD_APPLICATION_ID: snowflake,
     /** The application's Ed25519 public key, hex: what every interaction is verified with. */
-    DISCORD_PUBLIC_KEY: z
+    DATALAYER_DISCORD_PUBLIC_KEY: z
       .string()
       .regex(/^[0-9a-f]{64}$/, "64 lowercase hex characters"),
-    DISCORD_BOT_TOKEN: secret,
-    DISCORD_CLIENT_SECRET: secret,
+    DATALAYER_DISCORD_BOT_TOKEN: secret,
+    DATALAYER_DISCORD_CLIENT_SECRET: secret,
     /** AES-256-GCM key for host keys and interaction tokens at rest, base64 of 32 bytes. */
-    DISCORD_TOKEN_ENCRYPTION_KEY: secret,
-    DISCORD_TOKEN_ENCRYPTION_KEY_VERSION: z.coerce.number().int().positive(),
+    DATALAYER_DISCORD_TOKEN_ENCRYPTION_KEY: secret,
+    DATALAYER_DISCORD_TOKEN_ENCRYPTION_KEY_VERSION: z.coerce
+      .number()
+      .int()
+      .positive(),
     /** This service's public HTTPS origin: the install page, the OAuth callback, deliveries. */
-    DISCORD_APP_URL: z.url().startsWith("https://"),
+    DATALAYER_DISCORD_APP_URL: z.url().startsWith("https://"),
     DATALAYER_API_URL: z.url().startsWith("https://"),
     DATALAYER_WEB_URL: z.url().startsWith("https://"),
     /** How often the outbox is read, in seconds; 0 reads it never. */
