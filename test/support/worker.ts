@@ -35,6 +35,7 @@ export type Harness = Readonly<{
   agent: FakeAgent;
   store: DiscordStore;
   cipher: SecretCipher;
+  quotas: MemoryQuotaStore;
   worker: Worker;
   job(
     overrides?: Partial<InteractionJob> & { question?: string; n?: number },
@@ -50,6 +51,7 @@ export function harness(
   const port = new FakePort();
   const hosts = new FakeHosts();
   const agent = new FakeAgent(clock);
+  const quotas = new MemoryQuotaStore();
   const worker = new Worker({
     agent,
     applicationId: APPLICATION,
@@ -59,8 +61,9 @@ export function harness(
     ...(instance ? { instance } : {}),
     limits: DEFAULT_QUOTAS,
     logger: quietLogger(),
+    openLink: (request, kind, target) => hosts.openLink(request, kind, target),
     port,
-    quotas: new MemoryQuotaStore(),
+    quotas,
     store,
     webUrl: "https://datalayer.ai",
   });
@@ -93,6 +96,7 @@ export function harness(
       };
     },
     port,
+    quotas,
     store,
     worker,
   };

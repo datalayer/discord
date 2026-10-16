@@ -83,6 +83,8 @@ describe("Discord's forms of the host contracts (DC-006)", () => {
       targetOf({
         key: thread,
         messageId: discord.target.messageId!,
+        private: false,
+        threadExists: true,
         userId: discord.external_user_id,
       }),
     ).toEqual(discord.target);
@@ -102,6 +104,8 @@ describe("Discord's forms of the host contracts (DC-006)", () => {
       provenance: {
         key: thread,
         messageId: discord.target.messageId!,
+        private: false,
+        threadExists: true,
         userId: discord.external_user_id,
       },
     });

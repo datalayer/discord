@@ -9,7 +9,12 @@ import {
 
 import { readConfig } from "./config.js";
 import { HttpDiscordPort } from "./discord-port.js";
-import { discordShape, externalIdOf, type DiscordTurn } from "./domain.js";
+import {
+  discordShape,
+  externalIdOf,
+  type DiscordTurn,
+  type DiscordTurnRequest,
+} from "./domain.js";
 import { eventsRoute } from "./events.js";
 import { interactionsRoute } from "./interactions.js";
 import { CALLBACK_PATH, INSTALL_PATH, oauthRoutes } from "./oauth.js";
@@ -18,7 +23,7 @@ import { DiscordRateLimiter } from "./rate-limit.js";
 import { purgeRemoved, reconcile, removeInstallation } from "./removal.js";
 import { createResources } from "./resources.js";
 import { createHttpServer, type Routes } from "./server.js";
-import { Worker } from "./worker.js";
+import { TOKEN_LIFETIME_MS, Worker } from "./worker.js";
 
 /**
  * @Datalayer for Discord (plans/DISCORD.md): one process per role. Every
@@ -53,13 +58,27 @@ const hostKeyFor = async (request: { provenance: DiscordTurn }) => {
     externalIdOf(applicationId, guildId),
   );
 };
+const credentials = new HostKeyCredentials(
+  config.DATALAYER_API_URL,
+  hostKeyFor,
+  discordShape,
+);
 const agent = new HttpAgentClient<DiscordTurn>(
   config.DATALAYER_API_URL,
-  new HostKeyCredentials(config.DATALAYER_API_URL, hostKeyFor, discordShape),
+  credentials,
   discordShape,
   fetch,
   hostKeyFor,
 );
+// *Open in Datalayer*: the presser's own host token makes the handoff (§4.4).
+const openLink = async (
+  request: DiscordTurnRequest,
+  kind: "session" | "approval",
+  target: string,
+): Promise<string> => {
+  const host = await credentials.forTurn(request);
+  return (await hosts.handoff(host.accessToken, kind, target)).path;
+};
 const removal = {
   applicationId: config.DISCORD_APPLICATION_ID,
   cipher,
@@ -124,6 +143,7 @@ if (role !== "ingress") {
     hosts,
     limits: DEFAULT_QUOTAS,
     logger,
+    openLink,
     port,
     quotas: resources.quotas,
     removed: (guildId) => removeInstallation(removal, guildId, "unknown-guild"),
@@ -145,6 +165,21 @@ if (role !== "ingress") {
     setInterval(
       () => void purgeRemoved(removal).catch(() => undefined),
       60 * 60 * 1000,
+    ),
+  );
+  // An interaction token outlives its 15 minutes nowhere (§5, §9).
+  timers.push(
+    setInterval(
+      () =>
+        void store
+          .dropSpentTokens(new Date(Date.now() - TOKEN_LIFETIME_MS))
+          .then((dropped) =>
+            dropped ? logger.info("tokens.dropped", { dropped }) : undefined,
+          )
+          .catch((error: unknown) =>
+            logger.error("tokens.not_dropped", { error }),
+          ),
+      60 * 1000,
     ),
   );
 }

@@ -17,6 +17,7 @@ import {
   type QuotaLimits,
   type QuotaStore,
   type SecretCipher,
+  type SessionBinder,
 } from "@datalayer/agent-runtimes/lib/portable/hosts";
 import { randomBytes } from "node:crypto";
 
@@ -31,6 +32,7 @@ import {
   placeOf,
   threadIdOf,
   type DiscordTurn,
+  type DiscordTurnRequest,
   type ThreadKey,
 } from "./domain.js";
 import { handleEvent, type EventJob } from "./events.js";
@@ -43,7 +45,12 @@ import {
   privately,
   progressBody,
 } from "./render.js";
-import type { DiscordStore, Installation, ThreadBinding } from "./store.js";
+import type {
+  ComponentRow,
+  DiscordStore,
+  Installation,
+  ThreadBinding,
+} from "./store.js";
 import { refusalWords, WORDS } from "./words.js";
 
 /**
@@ -60,6 +67,8 @@ import { refusalWords, WORDS } from "./words.js";
 
 /** The bounded edit cadence: at most one edit every 1.5 s (§7.5). */
 export const EDIT_INTERVAL_MS = 1500;
+/** How long Discord honours an interaction token (§5, §9). */
+export const TOKEN_LIFETIME_MS = 15 * 60 * 1000;
 /** When the worker stops using the interaction token (valid 15 minutes). */
 export const TOKEN_SWITCH_MS = 14 * 60 * 1000;
 /** How long a thread's turn claim holds without renewal. */
@@ -79,12 +88,23 @@ export type WorkerDependencies = Readonly<{
     DatalayerHostClient,
     "self" | "linkState" | "linkCode" | "unlink" | "admin"
   >;
-  agent: AgentClient<DiscordTurn>;
+  /** Runs turns, and maps a session again once its answer's thread exists (§3.2). */
+  agent: AgentClient<DiscordTurn> & SessionBinder<DiscordTurn>;
   quotas: QuotaStore;
   limits: QuotaLimits;
   clock: Clock;
   logger: Logger;
   webUrl: string;
+  /**
+   * *Open in Datalayer* (§4.4, S-305): a one-use path that opens a session
+   * or an approval for the person `request` speaks for (their host token's
+   * handoff).
+   */
+  openLink: (
+    request: DiscordTurnRequest,
+    kind: "session" | "approval",
+    target: string,
+  ) => Promise<string>;
   /** This worker process: two copies of one job never both run a turn. */
   instance?: string;
   /** A server Discord says is unknown: removed (§7.4, `removal.ts`). */
@@ -124,12 +144,13 @@ export class Worker {
   }
 
   async interaction(job: InteractionJob): Promise<void> {
-    const token = this.deps.cipher.decrypt(job.token, job.id);
-    // A spent token is never used: a job that waited past 15 minutes says nothing.
-    if (this.deps.clock.now() - job.receivedAt >= 15 * 60 * 1000) {
+    // A spent token is never used: a job that waited past 15 minutes says
+    // nothing, and its token may already be dropped from the queue (§5).
+    if (this.deps.clock.now() - job.receivedAt >= TOKEN_LIFETIME_MS) {
       this.deps.logger.warn("interaction.expired", { interaction: job.id });
       return;
     }
+    const token = this.deps.cipher.decrypt(job.token, job.id);
     const say = (text: string) => this.#privately(job, token, text);
     if (job.key.guildId === DIRECT) return say(WORDS.directLater);
     const installation = await this.deps.store.installation(
@@ -277,32 +298,10 @@ export class Worker {
     });
     if (!resolution.ok) return say(refusalWords(resolution.refusal));
 
-    const now = new Date(clock.now());
-    const taken = await this.deps.quotas.takeQuota(
-      quotaEntries(this.deps.limits, {
-        applicationId: resolution.applicationId,
-        externalUserId: job.userId,
-        installation: externalIdOf(key.applicationId, key.guildId),
-        organizationId: installation.organizationUid,
-      }),
-      windowOf(now),
-    );
-    if (!taken.ok)
-      return say(
-        quotaWords(
-          {
-            limit: taken.entry.limit,
-            ok: false,
-            resetsAt: resetOf(now),
-            scope: taken.entry.scope,
-          },
-          "this server",
-        ),
-      );
-
     // One turn per thread, claimed insert-first (§7.5). A second copy of
     // this very job (another worker) says nothing; another person's prompt
-    // is told what runs.
+    // is told what runs. Nothing is charged before the claim.
+    const now = new Date(clock.now());
     const owner = `${job.id}:${this.instance}`;
     const claim = await store.claimTurn(
       threadKey,
@@ -315,6 +314,10 @@ export class Worker {
       return say(WORDS.busy);
     }
     try {
+      // Quotas are taken once per interaction (§9): a retried job, which
+      // the runtime answers from the same turn, is never charged again.
+      const refused = await this.#charge(job, key, installation, resolution);
+      if (refused) return await say(refused);
       await this.#turn(job, token, {
         applicationId: resolution.applicationId,
         binding,
@@ -327,6 +330,50 @@ export class Worker {
     } finally {
       await store.releaseTurn(threadKey, owner);
     }
+  }
+
+  /**
+   * Take the person's, the server's, the organization's and the
+   * application's quota for this interaction, once: what is said when one is
+   * spent, else `undefined`. The charge is claimed by the interaction id
+   * before it is taken (released if taking it fails), so a redelivered job
+   * goes on uncharged.
+   */
+  async #charge(
+    job: InteractionJob,
+    key: ThreadKey,
+    installation: Installation,
+    resolution: Readonly<{ applicationId: string }>,
+  ): Promise<string | undefined> {
+    const { store, clock } = this.deps;
+    const charge = `quota:${job.id}`;
+    if (!(await store.claimEvent(charge))) return undefined;
+    const now = new Date(clock.now());
+    let taken;
+    try {
+      taken = await this.deps.quotas.takeQuota(
+        quotaEntries(this.deps.limits, {
+          applicationId: resolution.applicationId,
+          externalUserId: job.userId,
+          installation: externalIdOf(key.applicationId, key.guildId),
+          organizationId: installation.organizationUid,
+        }),
+        windowOf(now),
+      );
+    } catch (error) {
+      await store.releaseEvent(charge);
+      throw error;
+    }
+    if (taken.ok) return undefined;
+    return quotaWords(
+      {
+        limit: taken.entry.limit,
+        ok: false,
+        resetsAt: resetOf(now),
+        scope: taken.entry.scope,
+      },
+      "this server",
+    );
   }
 
   async #turn(
@@ -348,6 +395,7 @@ export class Worker {
       turn.binding?.deploymentUid === turn.applicationId &&
       Boolean(turn.binding.sessionUid);
     const generation = turn.binding?.generation ?? 0;
+    const inThread = Boolean(turn.key.parentId);
     const request = {
       applicationId: turn.applicationId,
       externalEventId: `discord:${job.id}`,
@@ -357,6 +405,10 @@ export class Worker {
       provenance: {
         key: turn.key,
         messageId: turn.messageId,
+        private: job.ephemeral,
+        // A first `/ask`'s thread does not exist yet: mapped without it,
+        // then PUT again once it is started (§3.2, `openThread` below).
+        threadExists: inThread,
         userId: job.userId,
       },
       sessionGeneration: generation,
@@ -391,6 +443,7 @@ export class Worker {
       threadKey: turn.threadKey,
     });
     await store.setTurnRun(turn.threadKey, turn.owner, stream.sessionId);
+    const sessionId = stream.sessionId;
 
     const stopId = newRenderId();
     await store.saveComponent({
@@ -408,13 +461,10 @@ export class Worker {
 
     const state = new TurnState();
     const permissions = job.appPermissions;
-    const inThread = Boolean(turn.key.parentId);
-    const mayPost =
+    const mayPostIn = (thread: boolean) =>
       missingPermissions(permissions, [
         "VIEW_CHANNEL",
-        inThread || job.threadFromOriginal
-          ? "SEND_MESSAGES_IN_THREADS"
-          : "SEND_MESSAGES",
+        thread ? "SEND_MESSAGES_IN_THREADS" : "SEND_MESSAGES",
       ]).length === 0;
     const mayThread =
       job.threadFromOriginal &&
@@ -433,12 +483,51 @@ export class Worker {
     const flags = job.ephemeral ? EPHEMERAL : 0;
     const where = () => (threadStarted ? turn.key.thread : turn.key.channelId);
 
+    /**
+     * The answer's thread, started on `@original` once what it shows may be
+     * public (§3.2): never while a secret-bearing answer could follow it, so
+     * no public thread is left on a message that is then deleted. The
+     * session is then mapped again with the thread as its target.
+     */
+    const openThread = async (): Promise<void> => {
+      if (!mayThread || threadStarted || secret) return;
+      try {
+        await port.startThread(
+          turn.key.channelId,
+          turn.key.thread,
+          prompt.replace(/\s+/g, " ").slice(0, 90) || "Datalayer",
+        );
+      } catch (error) {
+        // The target stays the channel's message it was mapped with.
+        logger.warn("thread.not_started", { error, interaction: job.id });
+        return;
+      }
+      threadStarted = true;
+      try {
+        await this.deps.agent.bindSession(sessionId, {
+          ...request,
+          provenance: { ...request.provenance, threadExists: true },
+        });
+      } catch (error) {
+        logger.error("binding.not_updated", { error, interaction: job.id });
+      }
+    };
+
+    /** From the interaction token to a bot message where it may post (§7.5). */
+    const toBot = async (): Promise<Surface> => {
+      if (job.ephemeral) return { kind: "gone" };
+      await openThread();
+      return mayPostIn(threadStarted)
+        ? { channelId: where(), kind: "bot" }
+        : { kind: "gone" };
+    };
+
     const show = async (body: MessageBody): Promise<void> => {
       if (
         surface.kind === "interaction" &&
         clock.now() - job.receivedAt >= TOKEN_SWITCH_MS
       )
-        surface = await this.#switch(job, token, mayPost, where());
+        surface = await this.#switch(job, token, toBot);
       if (surface.kind === "interaction") {
         try {
           await port.editOriginal(token, body);
@@ -446,10 +535,7 @@ export class Worker {
         } catch (error) {
           if (!(error instanceof DiscordError && error.tokenGone)) throw error;
           logger.warn("interaction.token_gone", { interaction: job.id });
-          surface =
-            mayPost && !job.ephemeral
-              ? { channelId: where(), kind: "bot" }
-              : { kind: "gone" };
+          surface = await toBot();
         }
       }
       if (surface.kind === "bot") {
@@ -474,27 +560,18 @@ export class Worker {
         lastRenew = now;
       }
       if (now - lastEdit < EDIT_INTERVAL_MS) return;
-      // A secret-bearing answer is never shown where others read (§2, 5).
-      const shown = secret && !job.ephemeral ? new TurnState() : state;
-      if (shown !== state)
-        shown.apply({ kind: "progress", label: state.status });
-      const body = progressBody(shown, `dc:stop:${stopId}`, flags);
+      // Where others read (§2, 5) the running answer is never shown: only
+      // its status and length, the whole answer once it is checked.
+      const body = progressBody(
+        state,
+        `dc:stop:${stopId}`,
+        flags,
+        !job.ephemeral,
+      );
       if (body.content === lastShown) return;
       lastShown = body.content ?? "";
       lastEdit = now;
       await show(body);
-      if (mayThread && !threadStarted && surface.kind === "interaction") {
-        try {
-          await port.startThread(
-            turn.key.channelId,
-            turn.key.thread,
-            prompt.replace(/\s+/g, " ").slice(0, 90) || "Datalayer",
-          );
-          threadStarted = true;
-        } catch (error) {
-          logger.warn("thread.not_started", { error, interaction: job.id });
-        }
-      }
     };
 
     // The deferral already shows that @Datalayer is thinking: the first
@@ -522,17 +599,40 @@ export class Worker {
           : { kind: "error", message: WORDS.endedEarly },
       );
     }
-    await this.#finish(job, token, state, secret, surface, show);
+    const openId = newRenderId();
+    await store.saveComponent({
+      applicationId: turn.key.applicationId,
+      guildId: turn.key.guildId,
+      kind: "open",
+      ownerId: job.userId,
+      payload: {
+        applicationId: turn.applicationId,
+        kind: "session",
+        target: sessionId,
+      },
+      renderId: openId,
+    });
+    await this.#finish(
+      job,
+      token,
+      state,
+      secret,
+      surface,
+      show,
+      `dc:open:${openId}`,
+    );
+    // The answer was public and whole: its thread now has a place (§3.2).
+    if (!job.ephemeral && surface.kind === "interaction") await openThread();
   }
 
   /** The 14-minute switch (§7.5): from the token to a bot message, or to Datalayer. */
   async #switch(
     job: InteractionJob,
     token: string,
-    mayPost: boolean,
-    channelId: string,
+    toBot: () => Promise<Surface>,
   ): Promise<Surface> {
-    if (mayPost && !job.ephemeral) return { channelId, kind: "bot" };
+    const next = await toBot();
+    if (next.kind === "bot") return next;
     // The last edit the token allows says where the answer waits.
     await this.deps.port
       .editOriginal(token, {
@@ -552,12 +652,13 @@ export class Worker {
     secret: boolean,
     surface: Surface,
     show: (body: MessageBody) => Promise<void>,
+    openId: string,
   ): Promise<void> {
     const { port } = this.deps;
     if (surface.kind === "gone") return;
     if (secret && !job.ephemeral) {
       if (surface.kind === "interaction") {
-        const bodies = finalBodies(state, EPHEMERAL);
+        const bodies = finalBodies(state, EPHEMERAL, openId);
         await port.deleteOriginal(token);
         await port.followUp(token, {
           ...bodies[0]!,
@@ -576,7 +677,7 @@ export class Worker {
       }
       return;
     }
-    const bodies = finalBodies(state, job.ephemeral ? EPHEMERAL : 0);
+    const bodies = finalBodies(state, job.ephemeral ? EPHEMERAL : 0, openId);
     await show(bodies[0]!);
     for (const body of bodies.slice(1)) {
       if (surface.kind === "interaction") await port.followUp(token, body);
@@ -631,16 +732,38 @@ export class Worker {
       );
     }
     if (sub === "forget") {
-      await hosts.unlink(hostKey, job.userId);
+      // Forgotten everywhere it is forgotten (§5): unlinked at Datalayer in
+      // every server of this application where the service knew a link,
+      // and every row naming them here deleted, not only this server's.
+      const guilds = new Set([
+        installation.guildId,
+        ...(await store.linkedGuilds(installation.applicationId, job.userId)),
+      ]);
+      for (const guildId of guilds) {
+        const one =
+          guildId === installation.guildId
+            ? installation
+            : await store.installation(installation.applicationId, guildId);
+        if (!one || one.state === "removed") continue;
+        await hosts.unlink(
+          guildId === installation.guildId
+            ? hostKey
+            : this.deps.cipher.decrypt(
+                one.hostKey,
+                externalIdOf(one.applicationId, one.guildId),
+              ),
+          job.userId,
+        );
+        this.deps.logger.audit("identity.unlinked", {
+          installation: externalIdOf(one.applicationId, one.guildId),
+          reason: "forget",
+          user: job.userId,
+        });
+      }
       const deleted = await store.forgetUser(
         installation.applicationId,
         job.userId,
       );
-      this.deps.logger.audit("identity.unlinked", {
-        installation: external,
-        reason: "forget",
-        user: job.userId,
-      });
       return say(
         `Done: your account is unlinked and ${deleted} Discord record${deleted === 1 ? "" : "s"} naming you at Datalayer ${deleted === 1 ? "is" : "are"} deleted. Your sessions stay in Datalayer under its record retention; delete them there.`,
       );
@@ -683,6 +806,12 @@ export class Worker {
             : "Start over works inside a thread @Datalayer answers in.",
         );
       const threadKey = threadIdOf(job.key);
+      // Only an authorized person starts over or switches (§2, 2): linked,
+      // and the thread's opener while one is recorded.
+      const link = await this.#linked(installation, hostKey, job.userId);
+      if (!link.linked) return say(WORDS.notLinked);
+      const opener = (await store.thread(threadKey))?.openedBy;
+      if (opener && opener !== job.userId) return say(WORDS.notOpener);
       if (sub === "start-over") {
         await this.#newGeneration(threadKey, job.key, undefined);
         return say(
@@ -822,6 +951,79 @@ export class Worker {
     });
   }
 
+  /**
+   * *Open in Datalayer* (§4.4): the person the button is for (who asked, or
+   * whom an approval waits on), linked, gets their own one-use link to the
+   * session or the approval, answered only to them. Datalayer checks the
+   * target against their host token's deployment when it makes the link,
+   * and the signed-in person against it when the link is opened.
+   */
+  async #open(
+    job: InteractionJob,
+    token: string,
+    row: ComponentRow,
+  ): Promise<void> {
+    const say = (text: string) => this.#privately(job, token, text);
+    const { kind, target, applicationId } = row.payload;
+    if (
+      (kind !== "session" && kind !== "approval") ||
+      typeof target !== "string" ||
+      typeof applicationId !== "string"
+    )
+      throw new Error(
+        `An Open button's row names nothing to open: ${row.renderId}`,
+      );
+    if (row.ownerId !== job.userId) return say(WORDS.openNotYours);
+    const installation = await this.deps.store.installation(
+      job.key.applicationId,
+      job.key.guildId,
+    );
+    if (!installation) return say(WORDS.notConnected);
+    const hostKey = this.deps.cipher.decrypt(
+      installation.hostKey,
+      externalIdOf(installation.applicationId, installation.guildId),
+    );
+    const link = await this.#linked(installation, hostKey, job.userId);
+    if (!link.linked) return say(WORDS.notLinked);
+    let path: string;
+    try {
+      path = await this.deps.openLink(
+        {
+          applicationId,
+          externalEventId: `discord:${job.id}`,
+          externalUserId: job.userId,
+          principalId: link.principalUid ?? "",
+          prompt: "",
+          provenance: {
+            key: job.key,
+            messageId: job.id,
+            private: true,
+            threadExists: Boolean(job.key.parentId),
+            userId: job.userId,
+          },
+        },
+        kind,
+        target,
+      );
+    } catch (error) {
+      if (error instanceof HostRefusedError) {
+        this.deps.logger.audit("identity.refused", {
+          installation: externalIdOf(
+            installation.applicationId,
+            installation.guildId,
+          ),
+          reason: `open:${error.status}`,
+          user: job.userId,
+        });
+        return say(WORDS.refusedByDatalayer);
+      }
+      throw error;
+    }
+    return say(
+      `${WORDS.openHere} ${this.deps.webUrl.replace(/\/+$/, "")}${path}`,
+    );
+  }
+
   async #component(
     job: InteractionJob,
     token: string,
@@ -874,7 +1076,13 @@ export class Worker {
           externalUserId: job.userId,
           principalId: link.principalUid ?? "",
           prompt: "",
-          provenance: { key: job.key, messageId: job.id, userId: job.userId },
+          provenance: {
+            key: job.key,
+            messageId: job.id,
+            private: job.ephemeral,
+            threadExists: Boolean(job.key.parentId),
+            userId: job.userId,
+          },
         });
       } catch (error) {
         if (error instanceof HostRefusedError) {
@@ -888,6 +1096,7 @@ export class Worker {
       }
       return;
     }
+    if (component.kind === "open") return this.#open(job, token, row);
     if (component.kind === "app") {
       if (row.ownerId !== job.userId) {
         await this.deps.port.followUp(token, privately(WORDS.notYours));

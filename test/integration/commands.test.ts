@@ -11,6 +11,7 @@ import {
   CHANNEL,
   GUILD,
   id,
+  installation,
 } from "../support/discord.js";
 import { connected, harness, type Harness } from "../support/worker.js";
 
@@ -194,6 +195,68 @@ describe("/datalayer (DC-104, DC-106)", () => {
     expect(await h.store.linked(APPLICATION, GUILD, ALICE)).toBeUndefined();
     expect(await h.store.linked(APPLICATION, GUILD, BOB)).toBe(true);
   });
+
+  it("forget unlinks the person at Datalayer in every server where a link was known, and forgets them in each, never in a removed one", async () => {
+    const other = id(4);
+    const removed = id(5);
+    await h.store.saveInstallation(
+      installation(h.cipher, { guildId: other, hostUid: "host-other" }),
+    );
+    await h.store.saveInstallation(
+      installation(h.cipher, {
+        guildId: removed,
+        hostUid: "host-removed",
+        state: "removed",
+      }),
+    );
+    await h.store.setLinked(APPLICATION, other, ALICE, true);
+    await h.store.setLinked(APPLICATION, removed, ALICE, true);
+    await h.store.setLinked(APPLICATION, other, BOB, true);
+    await h.worker.handle(command(h, "datalayer", "forget"));
+    // This server's and the other's, each with its own host key.
+    expect(h.hosts.unlinked).toEqual([ALICE, ALICE]);
+    expect(h.hosts.unlinkedKeys).toHaveLength(2);
+    expect(await h.store.linkedGuilds(APPLICATION, ALICE)).toEqual([]);
+    expect(await h.store.linked(APPLICATION, other, BOB)).toBe(true);
+  });
+
+  it("start-over and app are refused to an unlinked person and to anyone but the thread's opener", async () => {
+    await h.store.saveThread({
+      applicationId: APPLICATION,
+      channelId: CHANNEL,
+      deploymentUid: "deployment-1",
+      generation: 0,
+      guildId: GUILD,
+      openedBy: ALICE,
+      sessionUid: "discord-old",
+      threadKey: threadIdOf(THREAD),
+    });
+    const inThread = { key: THREAD, threadFromOriginal: false };
+    h.hosts.links.delete(BOB);
+    await h.worker.handle(
+      command(h, "datalayer", "start-over", { ...inThread, userId: BOB }),
+    );
+    expect(told(h)).toBe(WORDS.notLinked);
+    h.hosts.links.set(BOB, "principal-bob");
+    for (const [n, sub] of [
+      [920, "start-over"],
+      [921, "app"],
+    ] as const) {
+      await h.worker.handle(
+        command(h, "datalayer", sub, { ...inThread, id: id(n), userId: BOB }),
+      );
+      expect(told(h)).toBe(WORDS.notOpener);
+    }
+    expect(await h.store.thread(threadIdOf(THREAD))).toMatchObject({
+      generation: 0,
+      sessionUid: "discord-old",
+    });
+    // The opener may.
+    await h.worker.handle(
+      command(h, "datalayer", "start-over", { ...inThread, id: id(922) }),
+    );
+    expect(told(h)).toContain("new session");
+  });
 });
 
 describe("/datalayer-admin (DC-106)", () => {
@@ -233,6 +296,21 @@ describe("/datalayer-admin (DC-106)", () => {
     );
     await h.worker.handle(h.job({ id: id(913) }));
     expect(h.agent.started).toHaveLength(1);
+  });
+
+  it("refuses resume to anyone but the owner's linked member, the server staying paused", async () => {
+    await h.worker.handle(command(h, "datalayer-admin", "pause"));
+    expect((await h.store.installation(APPLICATION, GUILD))?.state).toBe(
+      "paused",
+    );
+    await h.worker.handle(
+      command(h, "datalayer-admin", "resume", { id: id(916), userId: BOB }),
+    );
+    expect(told(h)).toBe(WORDS.notOwner);
+    expect((await h.store.installation(APPLICATION, GUILD))?.state).toBe(
+      "paused",
+    );
+    expect(h.hosts.changes).toEqual([{ paused: true }]);
   });
 
   it("denies a channel for its threads too (a thread is sent as its parent), for the owner only", async () => {

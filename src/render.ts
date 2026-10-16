@@ -83,14 +83,30 @@ function tailOf(text: string, room: number): string {
   return `…${text.slice(text.length - room + 1)}`;
 }
 
-/** A running turn's message: the answer so far, its status, and Stop. */
+/** How many words a running answer has so far. */
+export function wordCount(text: string): number {
+  return text.split(/\s+/).filter(Boolean).length;
+}
+
+/**
+ * A running turn's message: its status and Stop, and the answer so far only
+ * where its person alone reads it. Where others read (`publicly`, §2 rule 5)
+ * a running answer is never shown, only how far it has come: whether it
+ * bears something private is known only once it is whole, so the whole
+ * answer is shown then, once checked, and nothing of a secret-bearing one
+ * ever was.
+ */
 export function progressBody(
   state: TurnState,
   stopId: string | undefined,
   flags = 0,
+  publicly = false,
 ): MessageBody {
-  const status = `-# ${state.status}`;
-  const answer = inertMentions(state.answer.trim());
+  const words = wordCount(state.answer);
+  const status = `-# ${state.status}${
+    publicly && words ? ` · ${words} word${words === 1 ? "" : "s"} so far` : ""
+  }`;
+  const answer = publicly ? "" : inertMentions(state.answer.trim());
   const content = answer
     ? `${tailOf(answer, CONTENT_LIMIT - status.length - 2)}\n\n${status}`
     : status;
@@ -122,12 +138,22 @@ function endingWords(state: TurnState): string {
   return "Done, with nothing to say.";
 }
 
+/** The button that opens a turn's session in Datalayer (§3.2, §4.4). */
+export const OPEN_LABEL = "Open in Datalayer";
+
 /**
  * An ended turn's messages: the whole answer split within the limit, the
  * first for `@original` (or the first bot message), the rest after it; no
  * Stop button, the stream's text never repeated (`TurnState` keeps it once).
+ * With `openId`, the last carries *Open in Datalayer*, a press that makes
+ * the presser's own one-use link (never a link written into the message,
+ * which would expire or be spent by another).
  */
-export function finalBodies(state: TurnState, flags = 0): MessageBody[] {
+export function finalBodies(
+  state: TurnState,
+  flags = 0,
+  openId?: string,
+): MessageBody[] {
   const answer = inertMentions(state.answer.trim());
   const files = state.files.length
     ? [state.files.map((file) => `[${file.name}](${file.url})`).join("\n")]
@@ -143,9 +169,20 @@ export function finalBodies(state: TurnState, flags = 0): MessageBody[] {
       ]
     : [endingWords(state), ...files];
   const text = parts.join("\n\n");
-  return splitText(text).map((content) => ({
+  const chunks = splitText(text);
+  return chunks.map((content, at) => ({
     allowed_mentions: NO_MENTIONS,
-    components: [],
+    components:
+      openId && at === chunks.length - 1
+        ? [
+            {
+              components: [
+                { custom_id: openId, label: OPEN_LABEL, style: 2, type: 2 },
+              ],
+              type: 1,
+            },
+          ]
+        : [],
     content,
     ...(flags ? { flags } : {}),
   }));

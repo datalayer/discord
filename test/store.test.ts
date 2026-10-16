@@ -88,12 +88,29 @@ function contract(name: string, make: () => Promise<DiscordStore>) {
       expect(await store.spendState("n2", later(2000))).toBeUndefined();
     });
 
-    it("forgets a person: their link and components deleted, the threads they opened no longer naming them", async () => {
+    it("forgets a person in every server: their links and components deleted, the threads they opened and the presses they answered no longer naming them", async () => {
       const store = await make();
       const cipher = testCipher();
+      const other = id(4);
       await store.saveInstallation(installation(cipher));
+      await store.saveInstallation(
+        installation(cipher, { guildId: other, hostUid: "host-other" }),
+      );
       await store.setLinked(APPLICATION, GUILD, ALICE, true);
+      await store.setLinked(APPLICATION, other, ALICE, false);
       await store.setLinked(APPLICATION, GUILD, BOB, true);
+      expect((await store.linkedGuilds(APPLICATION, ALICE)).sort()).toEqual(
+        [GUILD, other].sort(),
+      );
+      await store.saveComponent({
+        applicationId: APPLICATION,
+        guildId: other,
+        kind: "app",
+        ownerId: BOB,
+        payload: {},
+        renderId: "render-0003",
+      });
+      expect(await store.answerComponent("render-0003", ALICE)).toBe(true);
       await store.saveThread({
         applicationId: APPLICATION,
         channelId: id(3),
@@ -110,11 +127,24 @@ function contract(name: string, make: () => Promise<DiscordStore>) {
         payload: {},
         renderId: "render-0002",
       });
-      expect(await store.forgetUser(APPLICATION, ALICE)).toBe(3);
+      // Two links, one thread, one owned component, one answered press.
+      expect(await store.forgetUser(APPLICATION, ALICE)).toBe(5);
       expect(await store.linked(APPLICATION, GUILD, ALICE)).toBeUndefined();
+      expect(await store.linked(APPLICATION, other, ALICE)).toBeUndefined();
+      expect(await store.linkedGuilds(APPLICATION, ALICE)).toEqual([]);
       expect(await store.linked(APPLICATION, GUILD, BOB)).toBe(true);
       expect((await store.thread("t2"))?.openedBy).toBeUndefined();
       expect(await store.component("render-0002")).toBeUndefined();
+      const answered = await store.component("render-0003");
+      expect(answered?.ownerId).toBe(BOB);
+      expect(answered?.answeredBy).not.toBe(ALICE);
+      // Still answered: a later press is not taken as the first.
+      expect(await store.answerComponent("render-0003", BOB)).toBe(false);
+      // Nothing of the installation names a Discord person: its installer
+      // is the Datalayer account the bind answered (`self().accountUid`).
+      expect((await store.installation(APPLICATION, GUILD))?.installedBy).toBe(
+        "account-1",
+      );
     });
 
     it("marks a server removed once, never back to active by a state change, and purges every row of it", async () => {
@@ -208,6 +238,103 @@ describe.runIf(Boolean(DATABASE_URL))("on PostgreSQL", () => {
         "2026-10-16T12",
       ),
     ).toBe(3);
+  });
+
+  it("forgets a person's quota counts and queued or dead requests in every server, never another's or the running one (DC-106)", async () => {
+    await truncate();
+    await database.query("TRUNCATE discord_usage, discord_jobs");
+    const store = new PostgresStore(database);
+    const other = id(4);
+    const usage = [
+      `user:${APPLICATION}:${GUILD}:${ALICE}`,
+      `user:${APPLICATION}:${other}:${ALICE}`,
+      `user:${APPLICATION}:${GUILD}:${BOB}`,
+      `installation:${APPLICATION}:${GUILD}`,
+    ];
+    for (const key of usage)
+      await database.query(
+        "INSERT INTO discord_usage (usage_key, usage_window, used) VALUES ($1, '2026-10-16T12', 1)",
+        [key],
+      );
+    const job = (userId: string, guildId: string, state: string) =>
+      database.query(
+        "INSERT INTO discord_jobs (payload, state) VALUES ($1, $2)",
+        [
+          {
+            id: id(990),
+            key: { applicationId: APPLICATION, channelId: id(3), guildId },
+            kind: "interaction",
+            userId,
+            userName: "someone",
+          },
+          state,
+        ],
+      );
+    await job(ALICE, GUILD, "ready");
+    await job(ALICE, other, "dead");
+    await job(ALICE, GUILD, "processing");
+    await job(BOB, GUILD, "dead");
+    await database.query("INSERT INTO discord_jobs (payload) VALUES ($1)", [
+      { guildId: GUILD, kind: "event", type: "APPLICATION_AUTHORIZED" },
+    ]);
+    // Two quota counts and two jobs.
+    expect(await store.forgetUser(APPLICATION, ALICE)).toBe(4);
+    const { rows: keys } = await database.query<{ usage_key: string }>(
+      "SELECT usage_key FROM discord_usage ORDER BY usage_key",
+    );
+    expect(keys.map((row) => row.usage_key)).toEqual(
+      [usage[3], usage[2]].sort(),
+    );
+    const { rows: jobs } = await database.query<{
+      state: string;
+      user: string | null;
+    }>(
+      "SELECT state, payload->>'userId' AS user FROM discord_jobs ORDER BY id",
+    );
+    expect(jobs).toEqual([
+      { state: "processing", user: ALICE },
+      { state: "dead", user: BOB },
+      { state: "ready", user: null },
+    ]);
+    await expect(store.forgetUser(APPLICATION, "x' OR '1'='1")).rejects.toThrow(
+      /Discord application and user id/,
+    );
+  });
+
+  it("drops a spent interaction token from queued and dead jobs, keeping a live one's (DC-102, §5)", async () => {
+    await database.query("TRUNCATE discord_jobs");
+    const store = new PostgresStore(database);
+    const now = Date.UTC(2026, 9, 16, 12);
+    const job = (n: number, receivedAt: number, state: string) =>
+      database.query(
+        "INSERT INTO discord_jobs (payload, state) VALUES ($1, $2)",
+        [
+          {
+            id: id(n),
+            kind: "interaction",
+            receivedAt,
+            token: { ciphertext: "x", iv: "y", version: 1 },
+            userId: ALICE,
+          },
+          state,
+        ],
+      );
+    await job(980, now - 16 * 60 * 1000, "dead");
+    await job(981, now - 20 * 60 * 1000, "ready");
+    await job(982, now - 60 * 1000, "ready");
+    await database.query("INSERT INTO discord_jobs (payload) VALUES ($1)", [
+      { kind: "event", type: "APPLICATION_AUTHORIZED" },
+    ]);
+    expect(await store.dropSpentTokens(new Date(now - 15 * 60 * 1000))).toBe(2);
+    const { rows } = await database.query<{ id: string; kept: boolean }>(
+      "SELECT payload->>'id' AS id, payload ? 'token' AS kept FROM discord_jobs WHERE payload->>'kind' = 'interaction' ORDER BY id",
+    );
+    expect(rows).toEqual([
+      { id: id(980), kept: false },
+      { id: id(981), kept: false },
+      { id: id(982), kept: true },
+    ]);
+    expect(await store.dropSpentTokens(new Date(now - 15 * 60 * 1000))).toBe(0);
   });
 
   it("gives one turn for two concurrent copies of one /ask (DC-105)", async () => {

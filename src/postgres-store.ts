@@ -184,7 +184,17 @@ export class PostgresStore implements DiscordStore {
     );
   }
 
+  async linkedGuilds(applicationId: string, userId: string) {
+    const { rows } = await this.database.query<{ guild_id: string }>(
+      "SELECT guild_id FROM discord_user_link WHERE application_id = $1 AND user_id = $2 ORDER BY guild_id",
+      [applicationId, userId],
+    );
+    return rows.map((row) => row.guild_id);
+  }
+
   async forgetUser(applicationId: string, userId: string) {
+    if (!/^\d{17,20}$/.test(userId) || !/^\d{17,20}$/.test(applicationId))
+      throw new Error("forgetUser names a Discord application and user id.");
     let count = 0;
     count +=
       (
@@ -204,6 +214,35 @@ export class PostgresStore implements DiscordStore {
       (
         await this.database.query(
           "DELETE FROM discord_component WHERE application_id = $1 AND owner_id = $2",
+          [applicationId, userId],
+        )
+      ).rowCount ?? 0;
+    // A press is kept answered (§7.6), by nobody it names.
+    count +=
+      (
+        await this.database.query(
+          "UPDATE discord_component SET answered_by = 'forgotten' WHERE application_id = $1 AND answered_by = $2",
+          [applicationId, userId],
+        )
+      ).rowCount ?? 0;
+    // Their quota counts in every server (`userQuotaKey`: user:<application>:<guild>:<user>).
+    count +=
+      (
+        await this.database.query(
+          "DELETE FROM discord_usage WHERE usage_key LIKE $1",
+          [`user:${applicationId}:%:${userId}`],
+        )
+      ).rowCount ?? 0;
+    // Their queued and dead requests; the one running now (this `forget`
+    // among them) is deleted by the queue when it is done.
+    count +=
+      (
+        await this.database.query(
+          `DELETE FROM discord_jobs
+            WHERE state <> 'processing'
+              AND payload->>'kind' = 'interaction'
+              AND payload#>>'{key,applicationId}' = $1
+              AND payload->>'userId' = $2`,
           [applicationId, userId],
         )
       ).rowCount ?? 0;
@@ -401,6 +440,16 @@ export class PostgresStore implements DiscordStore {
        DO UPDATE SET allowances = EXCLUDED.allowances, updated_at = now()`,
       [applicationId, guildId, JSON.stringify(allowances)],
     );
+  }
+
+  async dropSpentTokens(before: Date) {
+    const { rowCount } = await this.database.query(
+      `UPDATE discord_jobs SET payload = payload - 'token'
+        WHERE payload->>'kind' = 'interaction' AND payload ? 'token'
+          AND (payload->>'receivedAt')::bigint < $1`,
+      [before.getTime()],
+    );
+    return rowCount ?? 0;
   }
 
   async saveState(nonce: string, bindCode: EncryptedSecret, expiresAt: Date) {

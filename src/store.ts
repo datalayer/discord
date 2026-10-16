@@ -87,7 +87,15 @@ export interface DiscordStore extends DeliveryClaimStore {
     userId: string,
     linked: boolean,
   ): Promise<void>;
-  /** Every row naming a person, gone (`/datalayer forget`, §5): how many. */
+  /** The servers of an application where a person's link was ever recorded. */
+  linkedGuilds(applicationId: string, userId: string): Promise<string[]>;
+  /**
+   * Every row naming a person in every server of the application, gone or
+   * no longer naming them (`/datalayer forget`, §5): link status, the
+   * threads they opened, the components they own or answered, their quota
+   * counts and their queued or dead jobs (PostgreSQL; the memory store's
+   * queue and counts are process memory). How many rows.
+   */
   forgetUser(applicationId: string, userId: string): Promise<number>;
 
   thread(threadKey: string): Promise<ThreadBinding | undefined>;
@@ -134,6 +142,13 @@ export interface DiscordStore extends DeliveryClaimStore {
     guildId: string,
     allowances: readonly Allowance[],
   ): Promise<void>;
+
+  /**
+   * Drop the encrypted interaction token from every queued or dead job
+   * received before `before` (§5: a token is kept only its 15 minutes; the
+   * job, kept 14 days when dead, keeps no spent token). How many.
+   */
+  dropSpentTokens(before: Date): Promise<number>;
 
   /** Keep an install's state nonce, with its encrypted bind code, until it expires. */
   saveState(
@@ -243,6 +258,15 @@ export class MemoryStore implements DiscordStore {
     this.#links.set(`${applicationId}:${guildId}:${userId}`, linked);
   }
 
+  async linkedGuilds(applicationId: string, userId: string) {
+    return [...this.#links.keys()]
+      .filter(
+        (key) =>
+          key.startsWith(`${applicationId}:`) && key.endsWith(`:${userId}`),
+      )
+      .map((key) => key.split(":")[1]!);
+  }
+
   async forgetUser(applicationId: string, userId: string) {
     let count = 0;
     for (const key of [...this.#links.keys()])
@@ -258,6 +282,12 @@ export class MemoryStore implements DiscordStore {
     for (const [key, one] of [...this.#components])
       if (one.applicationId === applicationId && one.ownerId === userId) {
         this.#components.delete(key);
+        count += 1;
+      } else if (
+        one.applicationId === applicationId &&
+        one.answeredBy === userId
+      ) {
+        this.#components.set(key, { ...one, answeredBy: "forgotten" });
         count += 1;
       }
     return count;
@@ -354,6 +384,11 @@ export class MemoryStore implements DiscordStore {
     allowances: readonly Allowance[],
   ) {
     this.#allowances.set(`${applicationId}:${guildId}`, [...allowances]);
+  }
+
+  async dropSpentTokens() {
+    // The memory queue's jobs live in process memory and end with it.
+    return 0;
   }
 
   async saveState(nonce: string, bindCode: EncryptedSecret, expiresAt: Date) {

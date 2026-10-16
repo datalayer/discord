@@ -55,6 +55,7 @@ export const COMPONENT_KINDS = [
   "answer",
   "app",
   "start-over",
+  "open",
 ] as const;
 export type ComponentKind = (typeof COMPONENT_KINDS)[number];
 
@@ -480,7 +481,9 @@ async function answerOf(
         type: RESPONSE.modal,
       };
     }
-    if (component.kind === "show") {
+    if (component.kind === "show" || component.kind === "open") {
+      // Answered privately after a network read (§3.6; *Open in Datalayer*
+      // makes the presser's own one-use link, §4.4).
       answer = { data: { flags: EPHEMERAL }, type: RESPONSE.deferredMessage };
     } else {
       ephemeral = false;

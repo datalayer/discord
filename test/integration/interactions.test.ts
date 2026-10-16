@@ -261,7 +261,7 @@ describe("POST /discord/interactions (DC-102)", () => {
     expect(lines.join("\n")).not.toContain("interaction-token-for-tests");
   });
 
-  it("answers Approve with the confirmation modal at once, Stop with a deferred update, and an unknown button with a refusal", async () => {
+  it("answers Approve with the confirmation modal at once, Stop with a deferred update, Show and Open privately, and an unknown button with a refusal", async () => {
     const { post, queue } = await endpoint();
     const press = (customId: string, n: number) =>
       post(
@@ -285,13 +285,21 @@ describe("POST /discord/interactions (DC-102)", () => {
       data: { flags: EPHEMERAL },
       type: RESPONSE.deferredMessage,
     });
+    // Open in Datalayer: the presser's own link, made by the worker, private.
+    expect(await (await press("dc:open:abcdefghijkl", 914)).json()).toEqual({
+      data: { flags: EPHEMERAL },
+      type: RESPONSE.deferredMessage,
+    });
     const unknown = (await (
       await press("dc:delete-all:abcdefghijkl", 913)
     ).json()) as { data: { content: string } };
     expect(unknown.data.content).toBe(UNKNOWN_COMPONENT);
     expect(
       queue.jobs.map((job) => (job as InteractionJob).component?.kind),
-    ).toEqual(["stop", "show"]);
+    ).toEqual(["stop", "show", "open"]);
+    expect((queue.jobs.at(-1) as InteractionJob | undefined)?.ephemeral).toBe(
+      true,
+    );
   });
 
   it("autocompletes from the cached allowances, at most 25, with no network call", async () => {

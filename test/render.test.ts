@@ -11,6 +11,7 @@ import {
   routine,
   splitText,
   SUPPRESS_NOTIFICATIONS,
+  wordCount,
 } from "../src/render.js";
 import { ALICE } from "./support/discord.js";
 
@@ -58,6 +59,20 @@ describe("splitting (DC-306)", () => {
     expect(finalBodies(one).map((body) => body.content)).toEqual([
       "Option B is safer.",
     ]);
+  });
+});
+
+describe("what of a running answer is public (DC-105, §2 rule 5)", () => {
+  it("shows where others read only the status and how many words, never the words", () => {
+    const state = new TurnState();
+    state.apply({ kind: "text", text: "Your key is dlhk_ab" });
+    const shown = progressBody(state, "dc:stop:abcdefghijkl", 0, true);
+    expect(shown.content).toBe("-# Working… · 4 words so far");
+    expect(progressBody(state, undefined, 64).content).toContain(
+      "Your key is dlhk_ab",
+    );
+    expect(wordCount(" one\ntwo\tthree ")).toBe(3);
+    expect(wordCount("")).toBe(0);
   });
 });
 

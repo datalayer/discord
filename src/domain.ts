@@ -39,6 +39,14 @@ export type DiscordTurn = Readonly<{
   /** The interaction's `@original` message, or the gateway message. */
   messageId: string;
   userId: string;
+  /**
+   * Whether `key.thread` is a thread that exists: inside a thread, or once
+   * the answer's thread was started from `@original` (§3.2). Until then it
+   * only names the message the thread would start from.
+   */
+  threadExists: boolean;
+  /** Whether only the person sees the turn (an ephemeral `/ask`): nothing of it is posted where others read. */
+  private: boolean;
 }>;
 
 export type DiscordTurnRequest = HostTurnRequest<DiscordTurn>;
@@ -89,7 +97,10 @@ export function sessionUidOf(key: ThreadKey, generation?: number): string {
 
 /**
  * The delivery target handed back with every delivery (§4.3): at most 2 KB,
- * validated again when a delivery comes back (`targetSchema`, DC-301).
+ * validated again when a delivery comes back (`targetSchema`, DC-301). It
+ * names a thread only once the thread exists: a first `/ask` is mapped
+ * without one, and PUT again once its answer's thread is started (§3.2); a
+ * private turn says so, so nothing of it is delivered where others read.
  */
 export function targetOf(turn: DiscordTurn): Record<string, unknown> {
   return {
@@ -97,9 +108,8 @@ export function targetOf(turn: DiscordTurn): Record<string, unknown> {
     channelId: turn.key.parentId ?? turn.key.channelId,
     guildId: turn.key.guildId,
     messageId: turn.messageId,
-    // A thread started from the answer has the answer's id: deliveries post
-    // there, so the target needs no second PUT once the thread exists.
-    threadId: turn.key.thread,
+    ...(turn.threadExists ? { threadId: turn.key.thread } : {}),
+    ...(turn.private ? { private: true } : {}),
     userId: turn.userId,
   };
 }

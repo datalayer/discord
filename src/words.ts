@@ -32,6 +32,12 @@ export const WORDS = {
     "Only an owner of this server's Datalayer connection may do this, and only with Discord's Manage Server permission.",
   alreadyAnswered: "This was already answered.",
   notYours: "This is not yours to answer: it waits on someone else.",
+  openNotYours:
+    "This opens the conversation of the person who asked. Ask with /ask to have one of your own.",
+  openHere:
+    "Open your conversation in Datalayer (this link works once, for you, for ten minutes):",
+  notOpener:
+    "Only the person who started this thread's session may start it over or switch its application.",
 } as const;
 
 /** A resolution refusal in Discord's words (§8). */

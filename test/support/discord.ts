@@ -15,6 +15,7 @@ import {
   type HostSelf,
   type HostTurnRequest,
   type SemanticEvent,
+  type SessionBinder,
   type TurnStream,
 } from "@datalayer/agent-runtimes/lib/portable/hosts";
 
@@ -25,7 +26,7 @@ import type {
   SentMessage,
 } from "../../src/discord-port.js";
 import { DiscordError } from "../../src/discord-port.js";
-import type { DiscordTurn } from "../../src/domain.js";
+import { discordShape, type DiscordTurn } from "../../src/domain.js";
 import { createHttpServer, type Routes } from "../../src/server.js";
 import type { Installation } from "../../src/store.js";
 
@@ -186,6 +187,8 @@ export const tokenGone = () => new DiscordError(404, 10015, "webhook:original");
 export class FakeHosts {
   links = new Map<string, string>();
   unlinked: string[] = [];
+  /** The host key each unlink was made with: which installation it ended. */
+  unlinkedKeys: string[] = [];
   bound: Array<{ code: string; externalId: string }> = [];
   spentCodes = new Set<string>();
   uninstalledKeys: string[] = [];
@@ -208,9 +211,10 @@ export class FakeHosts {
   async linkCode(_hostKey: string, user: string) {
     return { code: `dlhc_test_${user}`, expiresIn: 600 };
   }
-  async unlink(_hostKey: string, user: string) {
+  async unlink(hostKey: string, user: string) {
     const had = this.links.delete(user);
     this.unlinked.push(user);
+    this.unlinkedKeys.push(hostKey);
     return had ? 1 : 0;
   }
   async bind(input: { code: string; externalId: string }) {
@@ -229,6 +233,26 @@ export class FakeHosts {
   }
   async uninstalled(hostKey: string) {
     this.uninstalledKeys.push(hostKey);
+  }
+  /** The handoffs made, as whom and to what (*Open in Datalayer*). */
+  handoffs: Array<{
+    user: string;
+    kind: "session" | "approval";
+    target: string;
+  }> = [];
+  async openLink(
+    request: HostTurnRequest<DiscordTurn>,
+    kind: "session" | "approval",
+    target: string,
+  ): Promise<string> {
+    if (!this.links.has(request.externalUserId))
+      throw new HostRefusedError(
+        403,
+        "The person is not linked.",
+        "Datalayer refused the host credential exchange",
+      );
+    this.handoffs.push({ kind, target, user: request.externalUserId });
+    return `/hosts/open?code=dlho_test_${this.handoffs.length}`;
   }
   /** Who the installation's owner is linked as, in the host: only they administer it. */
   owner = id(11);
@@ -282,9 +306,19 @@ export class FakeHosts {
 /** A turn the fake agent streams: events, with time passing between them. */
 export type Script = ReadonlyArray<SemanticEvent | { wait: number }>;
 
-/** The agent client: records each turn, streams a script, or refuses. */
-export class FakeAgent implements AgentClient<DiscordTurn> {
+/**
+ * The agent client: records each turn, streams a script, or refuses; and
+ * the targets the session was mapped with, as `HttpAgentClient` maps them
+ * (through `discordShape.targetOf`: at the start, then on each `bindSession`).
+ */
+export class FakeAgent
+  implements AgentClient<DiscordTurn>, SessionBinder<DiscordTurn>
+{
   readonly started: HostTurnRequest<DiscordTurn>[] = [];
+  readonly targets: Array<{
+    sessionId: string;
+    target: Record<string, unknown>;
+  }> = [];
   readonly stopped: string[] = [];
   script: Script = [{ kind: "text", text: "Hello." }, { kind: "completion" }];
   refuse?: Error;
@@ -300,9 +334,11 @@ export class FakeAgent implements AgentClient<DiscordTurn> {
     const script = this.script;
     const clock = this.clock;
     const run: { id?: string } = {};
+    const sessionId = request.sessionId ?? `discord-${"0".repeat(40)}`;
+    this.targets.push({ sessionId, target: discordShape.targetOf(request) });
     return {
       run,
-      sessionId: request.sessionId ?? `discord-${"0".repeat(40)}`,
+      sessionId,
       updates: (async function* () {
         for (const step of script) {
           if ("wait" in step) {
@@ -318,6 +354,14 @@ export class FakeAgent implements AgentClient<DiscordTurn> {
 
   async stopTurn(sessionId: string): Promise<void> {
     this.stopped.push(sessionId);
+  }
+
+  async bindSession(
+    sessionId: string,
+    request: HostTurnRequest<DiscordTurn>,
+  ): Promise<boolean> {
+    this.targets.push({ sessionId, target: discordShape.targetOf(request) });
+    return true;
   }
 }
 
