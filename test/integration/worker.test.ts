@@ -325,19 +325,16 @@ describe("/ask end to end (DC-105)", () => {
     expect(h.port.count("startThread")).toBe(0);
     expect(h.port.count("deleteOriginal")).toBe(0);
     expect(h.port.count("createMessage")).toBe(0);
-    expect(h.agent.targets).toEqual([
-      {
-        sessionId: expect.any(String),
-        target: {
-          applicationId: APPLICATION,
-          channelId: CHANNEL,
-          guildId: GUILD,
-          messageId: h.port.originalId,
-          private: true,
-          userId: ALICE,
-        },
-      },
-    ]);
+    expect(h.agent.targets).toHaveLength(1);
+    expect(typeof h.agent.targets[0]?.sessionId).toBe("string");
+    expect(h.agent.targets[0]?.target).toEqual({
+      applicationId: APPLICATION,
+      channelId: CHANNEL,
+      guildId: GUILD,
+      messageId: h.port.originalId,
+      private: true,
+      userId: ALICE,
+    });
   });
 
   it("charges the quotas once per interaction: a redelivered job is not charged again", async () => {
@@ -394,7 +391,7 @@ describe("/ask end to end (DC-105)", () => {
     h.clock.advance(15 * 60 * 1000);
     const { token: _dropped, ...withoutToken } = job;
     void _dropped;
-    await h.worker.handle(withoutToken as typeof job);
+    await h.worker.handle(withoutToken);
     await h.worker.handle(job);
     expect(h.port.calls).toEqual([]);
     expect(h.agent.started).toEqual([]);
