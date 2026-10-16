@@ -5,6 +5,9 @@ export default defineConfig({
     environment: "node",
     globals: true,
     include: ["test/**/*.test.ts"],
+    // One file at a time: the PostgreSQL files share one throwaway database,
+    // which migrate.test.ts drops and remakes.
+    fileParallelism: false,
     server: {
       deps: {
         // agent-runtimes' lib/portable keeps tsc's extensionless relative
