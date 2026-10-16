@@ -108,7 +108,7 @@ export function progressBody(
   const words = wordCount(state.answer);
   // The status line is the runtime's words: where others read, any
   // credential in it is masked (the whole output is checked at the end).
-  const status = `-# ${publicly ? redact(state.status) : state.status}${
+  const status = `-# ${publicly ? String(redact(state.status)) : state.status}${
     publicly && words ? ` · ${words} word${words === 1 ? "" : "s"} so far` : ""
   }`;
   const answer = publicly ? "" : inertMentions(state.answer.trim());
