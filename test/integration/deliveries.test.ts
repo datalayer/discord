@@ -22,7 +22,6 @@ import {
   GUILD,
   id,
   installation,
-  presentation,
   serve,
 } from "../support/discord.js";
 import { connected, harness, type Harness } from "../support/worker.js";

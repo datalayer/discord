@@ -481,7 +481,7 @@ export async function finishApproval(
     await port.editMessage(
       channelId,
       messageId,
-      decidedBody(String(toolName ?? ""), status, by),
+      decidedBody(typeof toolName === "string" ? toolName : "", status, by),
     );
   }
 }
