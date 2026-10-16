@@ -44,14 +44,16 @@ export type OAuthDependencies = Readonly<{
   now?: () => number;
 }>;
 
+const ESCAPES: Readonly<Record<string, string>> = {
+  '"': "&quot;",
+  "&": "&amp;",
+  "'": "&#39;",
+  "<": "&lt;",
+  ">": "&gt;",
+};
+
 function escapeHtml(text: string): string {
-  return text.replace(
-    /[&<>"']/g,
-    (one) =>
-      ({ '"': "&quot;", "&": "&amp;", "'": "&#39;", "<": "&lt;", ">": "&gt;" })[
-        one
-      ] ?? one,
-  );
+  return text.replace(/[&<>"']/g, (one) => ESCAPES[one] ?? one);
 }
 
 function page(

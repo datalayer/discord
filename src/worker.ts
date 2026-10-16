@@ -845,7 +845,13 @@ export class Worker {
       return;
     }
     if (component.kind === "stop") {
-      const threadKey = String(row.payload.threadKey);
+      const { threadKey, sessionUid, applicationId } = row.payload;
+      if (
+        typeof threadKey !== "string" ||
+        typeof sessionUid !== "string" ||
+        typeof applicationId !== "string"
+      )
+        throw new Error(`A Stop button's row names no turn: ${row.renderId}`);
       const held = await store.turn(threadKey);
       if (!held) {
         await this.deps.port.followUp(
@@ -862,8 +868,8 @@ export class Worker {
       }
       await store.requestStop(threadKey);
       try {
-        await this.deps.agent.stopTurn(String(row.payload.sessionUid), {
-          applicationId: String(row.payload.applicationId),
+        await this.deps.agent.stopTurn(sessionUid, {
+          applicationId,
           externalEventId: `discord:${job.id}`,
           externalUserId: job.userId,
           principalId: link.principalUid ?? "",

@@ -104,7 +104,7 @@ export class FakePort implements DiscordPort {
   originalId = id(500);
   #next = 600;
   /** Throw once from a method: the error, by method name. */
-  readonly failures = new Map<keyof DiscordPort, unknown[]>();
+  readonly failures = new Map<keyof DiscordPort, Error[]>();
   guildPages: Array<Array<{ id: string }>> = [];
   authorization: BotAuthorization = {
     guild: { id: GUILD, name: "Test" },
@@ -114,7 +114,8 @@ export class FakePort implements DiscordPort {
   #record(method: keyof DiscordPort, args: unknown[]): void {
     this.calls.push({ args, method });
     const queued = this.failures.get(method);
-    if (queued?.length) throw queued.shift();
+    const failure = queued?.shift();
+    if (failure) throw failure;
   }
 
   /** The bodies sent through one method, in order. */
@@ -286,7 +287,7 @@ export class FakeAgent implements AgentClient<DiscordTurn> {
   readonly started: HostTurnRequest<DiscordTurn>[] = [];
   readonly stopped: string[] = [];
   script: Script = [{ kind: "text", text: "Hello." }, { kind: "completion" }];
-  refuse?: unknown;
+  refuse?: Error;
   /** Called when a turn starts, before its stream: what a concurrency test waits on. */
   onStart?: () => Promise<void>;
 

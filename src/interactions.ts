@@ -222,7 +222,7 @@ function focusedOf(
   }[] = [],
 ): string | undefined {
   for (const one of options) {
-    if (one.focused) return String(one.value ?? "");
+    if (one.focused) return typeof one.value === "string" ? one.value : "";
     const inner = focusedOf((one.options ?? []) as typeof options);
     if (inner !== undefined) return inner;
   }

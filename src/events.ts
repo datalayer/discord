@@ -82,9 +82,9 @@ export function eventsRoute(
     )
       return send(401);
     const parsed = eventSchema.safeParse(
-      (() => {
+      ((): unknown => {
         try {
-          return JSON.parse(rawBody.toString("utf8"));
+          return JSON.parse(rawBody.toString("utf8")) as unknown;
         } catch {
           return undefined;
         }

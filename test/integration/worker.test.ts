@@ -1,7 +1,4 @@
-import {
-  HostRefusedError,
-  type SemanticEvent,
-} from "@datalayer/agent-runtimes/lib/portable/hosts";
+import { HostRefusedError } from "@datalayer/agent-runtimes/lib/portable/hosts";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { DiscordError, HttpDiscordPort } from "../../src/discord-port.js";
@@ -19,6 +16,7 @@ import {
   GUILD,
   id,
   tokenGone,
+  type Script,
 } from "../support/discord.js";
 import { connected, harness, type Harness } from "../support/worker.js";
 
@@ -30,10 +28,10 @@ import { connected, harness, type Harness } from "../support/worker.js";
  * deferral, Stop, and two copies of one job giving one turn.
  */
 
-const words = (count: number, every: number): SemanticEvent[] =>
+const words = (count: number, every: number): Script =>
   Array.from(
     { length: count },
-    () => [{ wait: every }, { kind: "text", text: "word " }] as never,
+    (): Script => [{ wait: every }, { kind: "text", text: "word " }],
   ).flat();
 
 describe("/ask end to end (DC-105)", () => {
@@ -238,7 +236,7 @@ describe("/ask end to end (DC-105)", () => {
     let stopId = "";
     h.agent.script = [
       { kind: "text", text: "Working on it" },
-      { wait: 2000 } as never,
+      { wait: 2000 },
       { kind: "text", text: "." },
     ];
     const edit = h.port.editOriginal.bind(h.port);
@@ -304,7 +302,7 @@ describe("Discord's rate limits through the REST port (DC-105, §7.5)", () => {
         clientSecret: "test-only",
       },
       limiter,
-      (async () => answers.shift()!) as typeof fetch,
+      async () => answers.shift()!,
     );
     const start = clock.now();
     expect(
@@ -335,11 +333,11 @@ describe("Discord's rate limits through the REST port (DC-105, §7.5)", () => {
         clientSecret: "test-only",
       },
       limiter,
-      (async () =>
+      async () =>
         new Response(JSON.stringify({ retry_after: 0.1 }), {
           headers: { "x-ratelimit-scope": "shared" },
           status: 429,
-        })) as typeof fetch,
+        }),
     );
     await expect(
       port.createMessage(CHANNEL, { allowed_mentions: { parse: [] } }),

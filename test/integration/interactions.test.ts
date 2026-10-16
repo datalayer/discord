@@ -285,10 +285,10 @@ describe("POST /discord/interactions (DC-102)", () => {
       data: { flags: EPHEMERAL },
       type: RESPONSE.deferredMessage,
     });
-    expect(
-      (await (await press("dc:delete-all:abcdefghijkl", 913)).json()).data
-        .content,
-    ).toBe(UNKNOWN_COMPONENT);
+    const unknown = (await (
+      await press("dc:delete-all:abcdefghijkl", 913)
+    ).json()) as { data: { content: string } };
+    expect(unknown.data.content).toBe(UNKNOWN_COMPONENT);
     expect(
       queue.jobs.map((job) => (job as InteractionJob).component?.kind),
     ).toEqual(["stop", "show"]);
@@ -306,7 +306,7 @@ describe("POST /discord/interactions (DC-102)", () => {
         name: `Analyst ${n}`,
       })),
     );
-    const answer = await (
+    const answer = (await (
       await post(
         JSON.stringify(
           askCommand({
@@ -326,7 +326,10 @@ describe("POST /discord/interactions (DC-102)", () => {
           }),
         ),
       )
-    ).json();
+    ).json()) as {
+      type: number;
+      data: { choices: unknown[] };
+    };
     expect(answer.type).toBe(RESPONSE.autocomplete);
     expect(answer.data.choices).toHaveLength(25);
     expect(queue.jobs).toHaveLength(0);
