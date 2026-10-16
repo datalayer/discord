@@ -21,8 +21,14 @@ must be answered within three seconds and is never retried.
   non-privileged intents `GUILDS | GUILD_MESSAGES | DIRECT_MESSAGES` (the
   user's decision, §15, 3). Interactions stay on HTTP.
 - `discord-interactions` for signatures, `discord-api-types` for payloads,
-  `@discordjs/rest` for bucket-aware REST, `@discordjs/ws` and
-  `@discordjs/core` for the gateway role.
+  `@discordjs/ws` and `@discordjs/core` for the gateway role (Phase 2).
+- REST over `fetch` with the service's own bucket-aware limiter
+  (`src/rate-limit.ts`; amended 16 October 2026, DC-105): the service calls
+  eight routes, and the plan needs every 429 to reach the limiter (counted
+  by scope, the invalid-request budget) with a bounded retry, which
+  `@discordjs/rest`'s internal queue and retries hide. The limiter reads
+  `X-RateLimit-Remaining`/`Reset-After` per route, the global flag and
+  `retry_after`, and is tested with a fake clock.
 
 ## Rejected
 

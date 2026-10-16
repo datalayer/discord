@@ -11,7 +11,7 @@
     "node": ">=20.19.0"
   },
   "config": {
-    "agentRuntimesVersion": "1.5.46"
+    "agentRuntimesVersion": "1.5.49"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -36,14 +36,13 @@
     "watch:lib": "tsc -w -p tsconfig.build.json"
   },
   "dependencies": {
-    "@discordjs/rest": "2.6.3",
     "discord-api-types": "0.38.56",
     "discord-interactions": "4.4.0",
     "pg": "8.23.1",
     "zod": "4.6.5"
   },
   "peerDependencies": {
-    "@datalayer/agent-runtimes": ">=1.5.46 <2"
+    "@datalayer/agent-runtimes": ">=1.5.49 <2"
   },
   "peerDependenciesMeta": {
     "@datalayer/agent-runtimes": {

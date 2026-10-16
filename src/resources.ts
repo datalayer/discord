@@ -11,6 +11,8 @@ import {
 
 import type { Config } from "./config.js";
 import { createDatabase } from "./database.js";
+import { PostgresStore } from "./postgres-store.js";
+import { MemoryStore, type DiscordStore } from "./store.js";
 
 /** The service's table prefix: `discord_*` (plans/DISCORD.md §5). */
 export const TABLE_PREFIX = "discord";
@@ -22,6 +24,7 @@ export type Resources = Readonly<{
   cipher: SecretCipher;
   queue: WorkQueue<DiscordJob>;
   quotas: QuotaStore;
+  store: DiscordStore;
   /** What `/readyz` asks: the store and the queue, never Discord or Datalayer. */
   checks: ReadinessChecks;
   close(): Promise<void>;
@@ -47,6 +50,7 @@ export function createResources(config: Config): Resources {
       close: () => queue.stop(),
       queue,
       quotas: new MemoryQuotaStore(),
+      store: new MemoryStore(),
     };
   }
   const database = createDatabase(config.DATABASE_URL);
@@ -66,5 +70,6 @@ export function createResources(config: Config): Resources {
     },
     queue,
     quotas: new PostgresQuotaStore(database, { tablePrefix: TABLE_PREFIX }),
+    store: new PostgresStore(database),
   };
 }

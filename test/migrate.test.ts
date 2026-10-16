@@ -37,7 +37,16 @@ describe.runIf(Boolean(DATABASE_URL))("migrate on PostgreSQL", () => {
       ).rows.map((row) => row.table_name);
     const first = await tables();
     expect(first).toEqual(
-      [...hostTables("discord"), "discord_installation"].sort(),
+      [
+        ...hostTables("discord"),
+        "discord_allowance",
+        "discord_component",
+        "discord_installation",
+        "discord_oauth_state",
+        "discord_thread_binding",
+        "discord_turn",
+        "discord_user_link",
+      ].sort(),
     );
     migrate();
     expect(await tables()).toEqual(first);
