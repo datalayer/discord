@@ -1,7 +1,7 @@
 # ADR 0003: no MESSAGE_CONTENT
 
-Status: proposed, 16 October 2026 (plans/DISCORD.md DC-002). Awaiting the
-user's acknowledgement.
+Status: accepted, 16 October 2026 (plans/DISCORD.md DC-002): proposed and
+acknowledged by the user the same day.
 
 ## Decision
 

@@ -1,7 +1,7 @@
 # ADR 0002: the host exchange, as Slack's
 
-Status: proposed, 16 October 2026 (plans/DISCORD.md DC-002). Awaiting the
-user's acknowledgement.
+Status: accepted, 16 October 2026 (plans/DISCORD.md DC-002): proposed and
+acknowledged by the user the same day.
 
 Discord takes the host credential exchange of the Slack service's ADR 0002
 (`datalayer/slack` `docs/adr/0002-host-exchange.md`) unchanged: the

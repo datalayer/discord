@@ -1,7 +1,7 @@
 # ADR 0001: HTTP interactions and a queue first; a gateway role in Phase 2
 
-Status: proposed, 16 October 2026 (plans/DISCORD.md DC-002). Awaiting the
-user's acknowledgement.
+Status: accepted, 16 October 2026 (plans/DISCORD.md DC-002): proposed and
+acknowledged by the user the same day.
 
 ## Context
 
