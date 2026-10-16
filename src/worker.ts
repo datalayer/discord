@@ -51,6 +51,7 @@ import {
   EPHEMERAL,
   finalBodies,
   NO_MENTIONS,
+  OPEN_LABEL,
   privately,
   progressBody,
   secretBearing,
@@ -88,6 +89,8 @@ export const TURN_RENEW_MS = 60 * 1000;
 
 /** Discord's JSON error code for a server the bot is no longer in. */
 export const UNKNOWN_GUILD = 10004;
+/** Discord's code when a thread was already started on the message. */
+export const THREAD_EXISTS = 160004;
 
 export type WorkerDependencies = Readonly<{
   applicationId: string;
@@ -673,6 +676,36 @@ export class Worker {
       },
       renderId: openId,
     });
+    // A private *Ask Datalayer* answer may be posted in the message's
+    // thread by the person who asked, once: never one that holds a secret,
+    // nor one that failed or said nothing.
+    let postId: string | undefined;
+    if (
+      job.aboutMessageId &&
+      job.ephemeral &&
+      !secret &&
+      surface.kind === "interaction" &&
+      state.answer.trim() &&
+      state.ending !== "error"
+    ) {
+      postId = newRenderId();
+      await store.saveComponent({
+        applicationId: turn.key.applicationId,
+        guildId: turn.key.guildId,
+        kind: "post",
+        ownerId: job.userId,
+        payload: {
+          applicationId: turn.applicationId,
+          channelId: turn.key.channelId,
+          messageId: job.aboutMessageId,
+          openId,
+          parentId: turn.key.parentId ?? "",
+          sessionUid: sessionId,
+          texts: finalBodies(state).map((body) => body.content ?? ""),
+        },
+        renderId: postId,
+      });
+    }
     await this.#finish(
       job,
       token,
@@ -681,6 +714,7 @@ export class Worker {
       surface,
       show,
       `dc:open:${openId}`,
+      postId && `dc:post:${postId}`,
     );
     // The output was whole, checked and public: its thread now has a place
     // on `@original`, also after the 14-minute switch.
@@ -718,6 +752,7 @@ export class Worker {
     surface: Surface,
     show: (body: MessageBody) => Promise<void>,
     openId: string,
+    postId?: string,
   ): Promise<void> {
     const { port } = this.deps;
     if (surface.kind === "gone") return;
@@ -742,7 +777,12 @@ export class Worker {
       }
       return;
     }
-    const bodies = finalBodies(state, job.ephemeral ? EPHEMERAL : 0, openId);
+    const bodies = finalBodies(
+      state,
+      job.ephemeral ? EPHEMERAL : 0,
+      openId,
+      postId,
+    );
     await show(bodies[0]!);
     for (const body of bodies.slice(1)) {
       if (surface.kind === "interaction") await port.followUp(token, body);
@@ -1152,6 +1192,155 @@ export class Worker {
     );
   }
 
+  /**
+   * *Post in thread* on a private *Ask Datalayer* answer (DC-206): by the
+   * person who asked, once, never for an answer holding a secret. The
+   * answer is posted as the bot in the message's thread (started on the
+   * message when it has none), and the session is mapped again with that
+   * thread as its target; a thread the press started is bound to the session.
+   */
+  async #post(
+    job: InteractionJob,
+    token: string,
+    installation: Installation,
+    hostKey: string,
+    row: ComponentRow,
+  ): Promise<void> {
+    const { port, store } = this.deps;
+    const say = (text: string) => port.followUp(token, privately(text));
+    if (row.ownerId !== job.userId) return void (await say(WORDS.notYours));
+    const {
+      applicationId,
+      channelId,
+      messageId,
+      openId,
+      parentId,
+      sessionUid,
+    } = row.payload;
+    const listed: unknown = row.payload.texts;
+    const texts = Array.isArray(listed)
+      ? (listed as unknown[]).filter(
+          (one): one is string => typeof one === "string",
+        )
+      : [];
+    if (
+      typeof applicationId !== "string" ||
+      typeof channelId !== "string" ||
+      typeof messageId !== "string" ||
+      typeof openId !== "string" ||
+      typeof parentId !== "string" ||
+      typeof sessionUid !== "string" ||
+      !texts.length ||
+      texts.length !== (listed as unknown[]).length
+    )
+      throw new Error(`A Post in thread row names no answer: ${row.renderId}`);
+    // Checked again on the press: a secret is never posted.
+    if (texts.some((one) => secretBearing(one)))
+      return void (await say(WORDS.private));
+    if (installation.state === "paused") return void (await say(WORDS.paused));
+    const inThread = Boolean(parentId);
+    if (
+      missingPermissions(job.appPermissions, [
+        "VIEW_CHANNEL",
+        "SEND_MESSAGES_IN_THREADS",
+        ...(inThread ? [] : ["CREATE_PUBLIC_THREADS"]),
+      ]).length
+    )
+      return void (await say(WORDS.cannotPostThread));
+    const link = await this.#linked(installation, hostKey, job.userId);
+    if (!link.linked) return void (await say(WORDS.notLinked));
+    if (!(await store.answerComponent(row.renderId, job.userId)))
+      return void (await say(WORDS.alreadyAnswered));
+
+    // The message's thread: the thread it is in, or the one started on it
+    // (a thread from a message has the message's id).
+    let threadId = channelId;
+    let started = false;
+    if (!inThread) {
+      threadId = messageId;
+      try {
+        await port.startThread(channelId, messageId, "Datalayer");
+        started = true;
+      } catch (error) {
+        if (!(error instanceof DiscordError && error.code === THREAD_EXISTS))
+          throw error;
+      }
+    }
+    for (const [at, content] of texts.entries())
+      await port.createMessage(threadId, {
+        allowed_mentions: NO_MENTIONS,
+        components: [],
+        content:
+          at === 0
+            ? `-# <@${job.userId}> asked Datalayer about this message\n${content}`.slice(
+                0,
+                2000,
+              )
+            : content,
+      });
+    const key: ThreadKey = {
+      applicationId: installation.applicationId,
+      channelId: threadId,
+      guildId: installation.guildId,
+      parentId: inThread ? parentId : channelId,
+      thread: threadId,
+    };
+    try {
+      await this.deps.agent.bindSession(sessionUid, {
+        applicationId,
+        externalEventId: `discord:${job.id}`,
+        externalUserId: job.userId,
+        principalId: link.principalUid ?? "",
+        prompt: "",
+        provenance: {
+          key,
+          messageId,
+          private: false,
+          threadExists: true,
+          userId: job.userId,
+        },
+        sessionId: sessionUid,
+      });
+    } catch (error) {
+      this.deps.logger.error("binding.not_updated", {
+        error,
+        interaction: job.id,
+      });
+    }
+    // A thread this press started continues the session; an existing
+    // thread keeps its own.
+    const threadKey = threadIdOf(key);
+    if (started && !(await store.thread(threadKey)))
+      await store.saveThread({
+        applicationId: installation.applicationId,
+        channelId: key.parentId ?? channelId,
+        deploymentUid: applicationId,
+        generation: 0,
+        guildId: installation.guildId,
+        openedBy: job.userId,
+        sessionUid,
+        threadKey,
+      });
+    // The private answer keeps *Open in Datalayer*, without the button.
+    await port.editOriginal(token, {
+      allowed_mentions: NO_MENTIONS,
+      components: [
+        {
+          components: [
+            {
+              custom_id: `dc:open:${openId}`,
+              label: OPEN_LABEL,
+              style: 2,
+              type: 2,
+            },
+          ],
+          type: 1,
+        },
+      ],
+    });
+    await say(`Posted in <#${threadId}>.`);
+  }
+
   /** The person a press or a submit speaks for, on one deployment. */
   #person(hostKey: string, job: InteractionJob, deploymentUid: string): Person {
     return { deploymentUid, hostKey, userId: job.userId };
@@ -1413,6 +1602,8 @@ export class Worker {
       return;
     }
     if (component.kind === "open") return this.#open(job, token, row);
+    if (component.kind === "post")
+      return this.#post(job, token, installation, hostKey, row);
     if (component.kind === "show")
       return this.#show(job, token, installation, hostKey, row);
     if (component.kind === "app") {

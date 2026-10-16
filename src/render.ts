@@ -150,6 +150,8 @@ function endingWords(state: TurnState): string {
 
 /** The button that opens a turn's session in Datalayer. */
 export const OPEN_LABEL = "Open in Datalayer";
+/** On a private *Ask Datalayer* answer: post it in the message's thread. */
+export const POST_LABEL = "Post in thread";
 
 /**
  * An ended turn's messages: the whole answer split within the limit, the
@@ -163,6 +165,7 @@ export function finalBodies(
   state: TurnState,
   flags = 0,
   openId?: string,
+  postId?: string,
 ): MessageBody[] {
   const answer = inertMentions(state.answer.trim());
   const files = state.files.length
@@ -183,11 +186,30 @@ export function finalBodies(
   return chunks.map((content, at) => ({
     allowed_mentions: NO_MENTIONS,
     components:
-      openId && at === chunks.length - 1
+      (openId || postId) && at === chunks.length - 1
         ? [
             {
               components: [
-                { custom_id: openId, label: OPEN_LABEL, style: 2, type: 2 },
+                ...(openId
+                  ? [
+                      {
+                        custom_id: openId,
+                        label: OPEN_LABEL,
+                        style: 2,
+                        type: 2,
+                      },
+                    ]
+                  : []),
+                ...(postId
+                  ? [
+                      {
+                        custom_id: postId,
+                        label: POST_LABEL,
+                        style: 2,
+                        type: 2,
+                      },
+                    ]
+                  : []),
               ],
               type: 1,
             },

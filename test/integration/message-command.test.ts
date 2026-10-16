@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { DiscordError } from "../../src/discord-port.js";
 import { sessionUidOf, threadIdOf } from "../../src/domain.js";
 import type { InteractionJob } from "../../src/interactions.js";
-import { EPHEMERAL } from "../../src/render.js";
+import { EPHEMERAL, POST_LABEL } from "../../src/render.js";
 import { WORDS } from "../../src/words.js";
 import {
   ALICE,
@@ -18,7 +19,10 @@ import { connected, harness, type Harness } from "../support/worker.js";
  * *Ask Datalayer* on a message (DC-206): the modal's
  * submit becomes the person's own private turn — the instruction and the
  * message's text quoted, the message as the turn's provenance — answered
- * only to them, in a session of its own, once.
+ * only to them, in a session of its own, once; and *Post in thread* on that
+ * private answer, for the person who asked only, once, never for an answer
+ * holding a secret, posting it in the message's thread and mapping the
+ * session there.
  */
 
 const ASKED_ABOUT = id(700);
@@ -159,5 +163,173 @@ describe("Ask Datalayer on a message (DC-206)", () => {
     await h.worker.handle(submitted(h, ALICE, 956));
     expect(h.agent.started).toEqual([]);
     expect(h.port.bodies("editOriginal").at(-1)?.content).toBe(WORDS.notLinked);
+  });
+
+  /** The *Post in thread* button on the private answer, if any. */
+  function postButton(h: Harness): string | undefined {
+    for (const body of h.port.bodies("editOriginal"))
+      for (const row of (body.components ?? []) as Array<{
+        components: Array<{ custom_id: string; label: string }>;
+      }>)
+        for (const button of row.components)
+          if (button.label === POST_LABEL) return button.custom_id;
+    return undefined;
+  }
+
+  /** A press on the private answer: an update deferred in the channel. */
+  function pressed(
+    h: Harness,
+    customId: string,
+    userId = ALICE,
+    n = 960,
+  ): InteractionJob {
+    const { command, ...job } = h.job({ n, userId });
+    void command;
+    return {
+      ...job,
+      component: { kind: "post", renderId: customId.split(":")[2] ?? "" },
+      ephemeral: false,
+      threadFromOriginal: false,
+      type: 3,
+    };
+  }
+
+  it("posts the private answer in a thread started on the message, for the asker, once, and maps the session there", async () => {
+    await opened(h);
+    await h.worker.handle(submitted(h));
+    const post = postButton(h);
+    expect(post).toMatch(/^dc:post:/);
+    const sessionId = h.agent.targets[0]!.sessionId;
+
+    // Another person's press posts nothing.
+    await h.worker.handle(pressed(h, post!, BOB, 961));
+    expect(h.port.bodies("followUp").at(-1)?.content).toBe(WORDS.notYours);
+    expect(h.port.count("createMessage")).toBe(0);
+
+    await h.worker.handle(pressed(h, post!, ALICE, 962));
+    expect(
+      h.port.calls.filter((call) => call.method === "startThread")[0]?.args,
+    ).toEqual([CHANNEL, ASKED_ABOUT, "Datalayer"]);
+    const posted = h.port.calls.filter(
+      (call) => call.method === "createMessage",
+    );
+    expect(posted).toHaveLength(1);
+    // As the bot, in the thread whose id is the message's, no ping.
+    expect(posted[0]?.args[0]).toBe(ASKED_ABOUT);
+    const body = h.port.bodies("createMessage")[0]!;
+    expect(body.content).toContain(`<@${ALICE}> asked Datalayer`);
+    expect(body.content).toContain("Hello.");
+    expect(body.allowed_mentions).toEqual({ parse: [] });
+    expect(body.flags).toBeUndefined();
+    // The session's target is the thread now, no longer private.
+    expect(h.agent.targets.at(-1)).toEqual({
+      sessionId,
+      target: {
+        applicationId: APPLICATION,
+        channelId: CHANNEL,
+        guildId: GUILD,
+        messageId: ASKED_ABOUT,
+        threadId: ASKED_ABOUT,
+        userId: ALICE,
+      },
+    });
+    // The thread it started continues that session.
+    const key = {
+      applicationId: APPLICATION,
+      channelId: ASKED_ABOUT,
+      guildId: GUILD,
+      parentId: CHANNEL,
+      thread: ASKED_ABOUT,
+    };
+    expect(await h.store.thread(threadIdOf(key))).toMatchObject({
+      openedBy: ALICE,
+      sessionUid: sessionId,
+    });
+    // The private answer loses the button and keeps Open in Datalayer.
+    const edited = h.port.bodies("editOriginal").at(-1)!;
+    expect(JSON.stringify(edited.components)).not.toContain(POST_LABEL);
+    expect(JSON.stringify(edited.components)).toContain("dc:open:");
+    expect(h.port.bodies("followUp").at(-1)?.content).toBe(
+      `Posted in <#${ASKED_ABOUT}>.`,
+    );
+
+    // Once.
+    await h.worker.handle(pressed(h, post!, ALICE, 963));
+    expect(h.port.count("createMessage")).toBe(1);
+    expect(h.port.bodies("followUp").at(-1)?.content).toBe(
+      WORDS.alreadyAnswered,
+    );
+  });
+
+  it("posts in the thread the message is in, or the one already started on it, without re-binding that thread", async () => {
+    await opened(h);
+    h.port.originalId = id(777);
+    await h.worker.handle(submitted(h, ALICE, 964, "Check it.", true));
+    await h.worker.handle(pressed(h, postButton(h)!, ALICE, 965));
+    expect(h.port.count("startThread")).toBe(0);
+    expect(
+      h.port.calls.find((call) => call.method === "createMessage")?.args[0],
+    ).toBe(id(500));
+    expect(h.agent.targets.at(-1)?.target).toMatchObject({
+      channelId: CHANNEL,
+      threadId: id(500),
+    });
+
+    // A message in a channel that already has its thread: Discord's 160004.
+    const g = harness();
+    await opened(g);
+    await g.worker.handle(submitted(g, ALICE, 966));
+    g.port.failures.set("startThread", [
+      new DiscordError(400, 160004, "channel:threads"),
+    ]);
+    await g.worker.handle(pressed(g, postButton(g)!, ALICE, 967));
+    expect(
+      g.port.calls.find((call) => call.method === "createMessage")?.args[0],
+    ).toBe(ASKED_ABOUT);
+    expect(
+      await g.store.thread(
+        threadIdOf({
+          applicationId: APPLICATION,
+          channelId: ASKED_ABOUT,
+          guildId: GUILD,
+          parentId: CHANNEL,
+          thread: ASKED_ABOUT,
+        }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("never offers or posts a secret-bearing answer", async () => {
+    await opened(h);
+    const secret = `dlhk_${"q3".repeat(12)}`;
+    h.agent.script = [
+      { kind: "text", text: `The key is ${secret}` },
+      { kind: "completion" },
+    ];
+    await h.worker.handle(submitted(h));
+    expect(h.port.bodies("editOriginal").at(-1)?.content).toContain(secret);
+    expect(postButton(h)).toBeUndefined();
+
+    // A row whose answer holds one (as if written before a check) is refused.
+    await h.store.saveComponent({
+      applicationId: APPLICATION,
+      guildId: GUILD,
+      kind: "post",
+      ownerId: ALICE,
+      payload: {
+        applicationId: "deployment-1",
+        channelId: CHANNEL,
+        messageId: ASKED_ABOUT,
+        openId: "openopenopen",
+        parentId: "",
+        sessionUid: "session-1",
+        texts: [`The key is ${secret}`],
+      },
+      renderId: "postpostpost",
+    });
+    await h.worker.handle(pressed(h, "dc:post:postpostpost", ALICE, 968));
+    expect(h.port.bodies("followUp").at(-1)?.content).toBe(WORDS.private);
+    expect(h.port.count("createMessage")).toBe(0);
+    expect(h.port.count("startThread")).toBe(0);
   });
 });

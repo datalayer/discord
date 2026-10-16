@@ -56,6 +56,7 @@ export const COMPONENT_KINDS = [
   "app",
   "start-over",
   "open",
+  "post",
 ] as const;
 export type ComponentKind = (typeof COMPONENT_KINDS)[number];
 

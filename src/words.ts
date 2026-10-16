@@ -40,6 +40,8 @@ export const WORDS = {
     "Open your conversation in Datalayer (this link works once, for you, for ten minutes):",
   approvalChanged:
     "This request is no longer the one shown, or it is decided in Datalayer only: review it in Datalayer.",
+  cannotPostThread:
+    "@Datalayer may not start a thread or post in it here: a server admin gives it Create Public Threads and Send Messages in Threads in this channel.",
   notOpener:
     "Only the person who started this thread's session may start it over or switch its application.",
 } as const;
