@@ -55,6 +55,7 @@ import {
   privately,
   progressBody,
   secretBearing,
+  START_OVER_LABEL,
 } from "./render.js";
 import type {
   ComponentRow,
@@ -918,10 +919,37 @@ export class Worker {
       const opener = (await store.thread(threadKey))?.openedBy;
       if (opener && opener !== job.userId) return say(WORDS.notOpener);
       if (sub === "start-over") {
-        await this.#newGeneration(threadKey, job.key, undefined);
-        return say(
-          "Done: the next question in this thread starts a new session.",
-        );
+        // Held for its own person, with the thread key in the row: the
+        // press archives the binding into a new generation, once.
+        const renderId = newRenderId();
+        await store.saveComponent({
+          applicationId: installation.applicationId,
+          guildId: installation.guildId,
+          kind: "start-over",
+          ownerId: job.userId,
+          payload: { key: job.key },
+          renderId,
+        });
+        await this.deps.port.editOriginal(token, {
+          allowed_mentions: NO_MENTIONS,
+          components: [
+            {
+              components: [
+                {
+                  custom_id: `dc:start-over:${renderId}`,
+                  label: START_OVER_LABEL,
+                  style: 4,
+                  type: 2,
+                },
+              ],
+              type: 1,
+            },
+          ],
+          content:
+            "Start over? The next question in this thread then starts a new session; this one stays in Datalayer.",
+          flags: EPHEMERAL,
+        });
+        return;
       }
       await this.#self(installation, hostKey);
       const choices = usableAllowances(
@@ -1675,6 +1703,11 @@ export class Worker {
         );
         return;
       }
+      // Answered once: a second choice from the same menu changes nothing.
+      if (!(await store.answerComponent(row.renderId, job.userId))) {
+        await this.deps.port.followUp(token, privately(WORDS.alreadyAnswered));
+        return;
+      }
       const key = row.payload.key as ThreadKey;
       // A switch archives the binding and opens a new generation (S-208).
       await this.#newGeneration(threadIdOf(key), key, chosen);
@@ -1682,6 +1715,24 @@ export class Worker {
         allowed_mentions: NO_MENTIONS,
         components: [],
         content: `${allowed.name} answers the next question here, in a new session.`,
+      });
+      return;
+    }
+    if (component.kind === "start-over") {
+      if (row.ownerId !== job.userId) {
+        await this.deps.port.followUp(token, privately(WORDS.notYours));
+        return;
+      }
+      if (!(await store.answerComponent(row.renderId, job.userId))) {
+        await this.deps.port.followUp(token, privately(WORDS.alreadyAnswered));
+        return;
+      }
+      const key = row.payload.key as ThreadKey;
+      await this.#newGeneration(threadIdOf(key), key, undefined);
+      await this.deps.port.editOriginal(token, {
+        allowed_mentions: NO_MENTIONS,
+        components: [],
+        content: "Done: the next question in this thread starts a new session.",
       });
       return;
     }

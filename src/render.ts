@@ -150,6 +150,8 @@ function endingWords(state: TurnState): string {
 
 /** The button that opens a turn's session in Datalayer. */
 export const OPEN_LABEL = "Open in Datalayer";
+/** What `/datalayer start-over` asks to confirm, on its own person's button. */
+export const START_OVER_LABEL = "Start over";
 /** On a private *Ask Datalayer* answer: post it in the message's thread. */
 export const POST_LABEL = "Post in thread";
 

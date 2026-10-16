@@ -114,6 +114,28 @@ describe("/datalayer (DC-104, DC-106)", () => {
       }),
     );
     expect(told(h)).toContain("new session");
+    // Held on its own person's button, applied by the press.
+    expect(await h.store.thread(threadIdOf(THREAD))).toMatchObject({
+      generation: 0,
+    });
+    const button = (
+      h.port.bodies("editOriginal").at(-1)?.components?.[0] as {
+        components: Array<{ custom_id: string }>;
+      }
+    ).components[0]!.custom_id;
+    await h.worker.handle(
+      h.job({
+        command: undefined,
+        component: { kind: "start-over", renderId: button.split(":")[2]! },
+        id: id(907),
+        key: THREAD,
+        threadFromOriginal: false,
+        type: 3,
+      }),
+    );
+    expect(h.port.bodies("editOriginal").at(-1)?.content).toContain(
+      "starts a new session",
+    );
     expect(await h.store.thread(threadIdOf(THREAD))).toMatchObject({
       generation: 1,
     });
