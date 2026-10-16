@@ -1,7 +1,7 @@
 .PHONY: check image push
 
 # The image's tag: bump it for every push, never overwrite a pushed tag.
-# 0.1.0: not pushed yet (DC-008, DC-501).
+# 0.1.0: pushed 16 October 2026 (sha256:b340ed19b34a…), pinned in up.sh datalayer_discord.
 VERSION ?= 0.1.0
 REGISTRY ?= $(DATALAYER_DOCKER_REGISTRY)
 EXPORT := $(HOME)/.cache/discord-export-$(shell git rev-parse --short HEAD)
