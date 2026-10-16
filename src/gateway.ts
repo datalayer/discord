@@ -176,9 +176,26 @@ export type GatewayDependencies = Readonly<{
   lockCheckMs?: number;
   /** How long a replica that does not lead waits before trying again. */
   followerRetryMs?: number;
+  /**
+   * Where the session is kept for the next leader: a replica stopping (a
+   * rollout) leaves its session resumable, and the one that takes the lock
+   * resumes it, so the session outlives the pod.
+   */
+  sessions?: GatewaySessions;
 }>;
 
-type Session = { id: string; resumeUrl: string; seq: number | null };
+/** A gateway session, as Discord gave it: what a resume needs (with the token). */
+export type GatewaySession = {
+  id: string;
+  resumeUrl: string;
+  seq: number | null;
+};
+type Session = GatewaySession;
+
+export interface GatewaySessions {
+  load(): Promise<GatewaySession | undefined>;
+  save(session: GatewaySession | undefined): Promise<void>;
+}
 
 /**
  * One gateway connection, while this replica leads. `start` returns at once;
@@ -192,14 +209,17 @@ export class Gateway {
   #lockTimer: unknown;
   #retry: unknown;
   #acked = true;
-  #botId = "";
+  /** The bot's user id: the application's, until READY says otherwise. */
+  #botId: string;
   #leading = false;
   #stopped = false;
   #fatal = false;
   /** The connection's generation: a stale socket's events are ignored. */
   #generation = 0;
 
-  constructor(readonly deps: GatewayDependencies) {}
+  constructor(readonly deps: GatewayDependencies) {
+    this.#botId = deps.applicationId;
+  }
 
   /** Whether this replica holds the lock and a connection. */
   get leading(): boolean {
@@ -217,7 +237,16 @@ export class Gateway {
 
   async stop(): Promise<void> {
     this.#stopped = true;
-    this.#close(1000);
+    // Leading, the session is left resumable for the next leader: closed
+    // with a code that keeps it, and kept with its last sequence.
+    if (this.#leading && this.#session && this.deps.sessions) {
+      this.#close(RESUME_CLOSE);
+      await this.deps.sessions
+        .save({ ...this.#session, seq: this.#seq })
+        .catch((error: unknown) =>
+          this.deps.logger.warn("gateway.session_not_kept", { error }),
+        );
+    } else this.#close(1000);
     this.deps.timers.clear(this.#retry);
     this.deps.timers.clear(this.#lockTimer);
     if (this.#leading) await this.deps.lock.release();
@@ -243,7 +272,15 @@ export class Gateway {
     this.#leading = true;
     logger.info("gateway.leading", {});
     this.#watchLock();
-    await this.#connect(false);
+    // The session the last leader left, resumed when Discord still has it.
+    const kept = await this.deps.sessions?.load().catch(() => undefined);
+    if (kept) {
+      this.#session = { ...kept };
+      this.#seq = kept.seq;
+      await this.deps.sessions?.save(undefined).catch(() => undefined);
+      logger.info("gateway.resuming_kept", {});
+    }
+    await this.#connect(Boolean(kept));
   }
 
   /** While leading, the lock is checked; lost, the connection closes at once. */

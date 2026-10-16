@@ -249,6 +249,28 @@ function contract(name: string, make: () => Promise<DiscordStore>) {
       expect(presses.filter(Boolean)).toHaveLength(1);
     });
 
+    it("keeps the gateway session a stopping leader leaves, once, per application (DC-201)", async () => {
+      const store = await make();
+      expect(await store.gatewaySession(APPLICATION)).toBeUndefined();
+      await store.saveGatewaySession(APPLICATION, {
+        id: "session-1",
+        resumeUrl: "wss://resume.discord.gg",
+        seq: 41,
+      });
+      await store.saveGatewaySession(APPLICATION, {
+        id: "session-2",
+        resumeUrl: "wss://resume.discord.gg",
+        seq: 42,
+      });
+      expect(await store.gatewaySession(APPLICATION)).toEqual({
+        id: "session-2",
+        resumeUrl: "wss://resume.discord.gg",
+        seq: 42,
+      });
+      await store.saveGatewaySession(APPLICATION, undefined);
+      expect(await store.gatewaySession(APPLICATION)).toBeUndefined();
+    });
+
     it("keeps a server's quiet or noisy, quiet at install, never on a removed server (DC-307)", async () => {
       const store = await make();
       const cipher = testCipher();

@@ -9,6 +9,7 @@ import {
   RESUME_CLOSE,
   type GatewayBot,
   type GatewayMessage,
+  type GatewaySession,
   type GatewayTimers,
   type LeaderLock,
   type MessageJob,
@@ -332,6 +333,65 @@ describe("the gateway role (DC-201)", () => {
     expect(sockets).toHaveLength(2);
     await current().receive(10, { heartbeat_interval: 40_000 });
     expect(current().ops()).toEqual([2]);
+  });
+
+  it("leaves its session to the next leader when it stops: closed resumable, kept with its sequence, and resumed by the replica that takes the lock", async () => {
+    let kept: GatewaySession | undefined;
+    const sessions = {
+      load: async () => kept,
+      save: async (session: GatewaySession | undefined) => {
+        kept = session;
+      },
+    };
+    const leader = new Gateway({ ...gateway.deps, sessions });
+    leader.start();
+    await settle();
+    const socket = current();
+    await socket.receive(10, { heartbeat_interval: 40_000 });
+    await socket.receive(
+      0,
+      {
+        resume_gateway_url: "wss://resume.discord.gg",
+        session_id: "session-1",
+        user: { id: BOT },
+      },
+      1,
+      "READY",
+    );
+    await socket.receive(0, message(), 7, "MESSAGE_CREATE");
+    // A rollout stops it: SIGTERM.
+    await leader.stop();
+    expect(socket.closedWith).toBe(RESUME_CLOSE);
+    expect(kept).toEqual({
+      id: "session-1",
+      resumeUrl: "wss://resume.discord.gg",
+      seq: 7,
+    });
+    expect(lock.free).toBe(true);
+
+    // The next replica takes the lock and resumes that session.
+    const next = new Gateway({ ...gateway.deps, sessions });
+    next.start();
+    await settle();
+    const resumed = current();
+    expect(resumed.url).toBe("wss://resume.discord.gg/?v=10&encoding=json");
+    await resumed.receive(10, { heartbeat_interval: 40_000 });
+    expect(resumed.sent[0]).toEqual({
+      d: { seq: 7, session_id: "session-1", token: TOKEN },
+      op: 6,
+    });
+    expect(kept).toBeUndefined();
+    await resumed.receive(0, {}, 8, "RESUMED");
+    // One identify in all: the session outlived the pod.
+    expect(botReads).toBe(1);
+    // Resumed without READY, it still knows the bot (the application's id).
+    await resumed.receive(
+      0,
+      message({ id: id(790), mentions: [{ id: APPLICATION }] }),
+      9,
+      "MESSAGE_CREATE",
+    );
+    expect(queued.map((one) => one.key)).toContain(`message:${id(790)}`);
   });
 
   it("keeps a mention of the bot and a direct message, once each, and nothing else", async () => {

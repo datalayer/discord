@@ -4,6 +4,7 @@ import type {
   EncryptedSecret,
 } from "@datalayer/agent-runtimes/lib/portable/hosts";
 
+import type { GatewaySession } from "./gateway.js";
 import type { NotificationMode } from "./render.js";
 
 /**
@@ -84,6 +85,13 @@ export interface DiscordStore extends DeliveryClaimStore {
     state: InstallationState,
     at: Date,
   ): Promise<boolean>;
+  /** The gateway session a stopping leader left (DC-201), if any. */
+  gatewaySession(applicationId: string): Promise<GatewaySession | undefined>;
+  /** Keep it for the next leader, or clear it (`undefined`). */
+  saveGatewaySession(
+    applicationId: string,
+    session: GatewaySession | undefined,
+  ): Promise<void>;
   /** An owner's quiet or noisy (DC-307); false when no live installation. */
   setNotifications(
     applicationId: string,
@@ -245,6 +253,20 @@ export class MemoryStore implements DiscordStore {
       ...(state === "removed" ? { removedAt: at } : {}),
     });
     return true;
+  }
+
+  readonly #gatewaySessions = new Map<string, GatewaySession>();
+
+  async gatewaySession(applicationId: string) {
+    return this.#gatewaySessions.get(applicationId);
+  }
+
+  async saveGatewaySession(
+    applicationId: string,
+    session: GatewaySession | undefined,
+  ) {
+    if (session) this.#gatewaySessions.set(applicationId, { ...session });
+    else this.#gatewaySessions.delete(applicationId);
   }
 
   async setNotifications(

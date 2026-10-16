@@ -3,6 +3,7 @@ import type {
   Queryable,
 } from "@datalayer/agent-runtimes/lib/portable/hosts";
 
+import type { GatewaySession } from "./gateway.js";
 import type { NotificationMode } from "./render.js";
 import type {
   Allowance,
@@ -126,6 +127,46 @@ export class PostgresStore implements DiscordStore {
         one.removedAt ?? null,
         one.notifications,
       ],
+    );
+  }
+
+  async gatewaySession(applicationId: string) {
+    const { rows } = await this.database.query<{
+      session_id: string;
+      resume_url: string;
+      seq: string | null;
+    }>(
+      "SELECT session_id, resume_url, seq FROM discord_gateway_session WHERE application_id = $1",
+      [applicationId],
+    );
+    const row = rows[0];
+    return row
+      ? {
+          id: row.session_id,
+          resumeUrl: row.resume_url,
+          seq: row.seq === null ? null : Number(row.seq),
+        }
+      : undefined;
+  }
+
+  async saveGatewaySession(
+    applicationId: string,
+    session: GatewaySession | undefined,
+  ) {
+    if (!session) {
+      await this.database.query(
+        "DELETE FROM discord_gateway_session WHERE application_id = $1",
+        [applicationId],
+      );
+      return;
+    }
+    await this.database.query(
+      `INSERT INTO discord_gateway_session (application_id, session_id, resume_url, seq)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (application_id) DO UPDATE SET
+         session_id = EXCLUDED.session_id, resume_url = EXCLUDED.resume_url,
+         seq = EXCLUDED.seq, saved_at = now()`,
+      [applicationId, session.id, session.resumeUrl, session.seq],
     );
   }
 

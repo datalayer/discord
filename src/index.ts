@@ -182,6 +182,14 @@ if (role === "gateway" || role === "all") {
     enqueue: (job, key) => queue.enqueue(job, key),
     lock,
     logger,
+    sessions: {
+      load: () => store.gatewaySession(config.DATALAYER_DISCORD_APPLICATION_ID),
+      save: (session) =>
+        store.saveGatewaySession(
+          config.DATALAYER_DISCORD_APPLICATION_ID,
+          session,
+        ),
+    },
     socket: webSocket,
     timers: systemTimers,
     token: config.DATALAYER_DISCORD_BOT_TOKEN,
