@@ -1,4 +1,7 @@
-import type { TurnState } from "@datalayer/agent-runtimes/lib/portable/hosts";
+import {
+  redact,
+  type TurnState,
+} from "@datalayer/agent-runtimes/lib/portable/hosts";
 
 import type { MessageBody } from "./discord-port.js";
 
@@ -103,7 +106,9 @@ export function progressBody(
   publicly = false,
 ): MessageBody {
   const words = wordCount(state.answer);
-  const status = `-# ${state.status}${
+  // The status line is the runtime's words: where others read, any
+  // credential in it is masked (the whole output is checked at the end).
+  const status = `-# ${publicly ? redact(state.status) : state.status}${
     publicly && words ? ` · ${words} word${words === 1 ? "" : "s"} so far` : ""
   }`;
   const answer = publicly ? "" : inertMentions(state.answer.trim());

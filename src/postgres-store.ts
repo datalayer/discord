@@ -217,6 +217,15 @@ export class PostgresStore implements DiscordStore {
           [applicationId, userId],
         )
       ).rowCount ?? 0;
+    // Another person's "Ask Datalayer" on their message keeps its author and
+    // text until it is submitted (§3.5): deleted with them.
+    count +=
+      (
+        await this.database.query(
+          "DELETE FROM discord_component WHERE application_id = $1 AND kind = 'ask-message' AND payload->>'authorId' = $2",
+          [applicationId, userId],
+        )
+      ).rowCount ?? 0;
     // A press is kept answered (§7.6), by nobody it names.
     count +=
       (

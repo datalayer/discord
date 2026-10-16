@@ -126,8 +126,37 @@ describe("/ask end to end (DC-105)", () => {
     expect(firstBot).toBeGreaterThan(0);
     expect(methods.slice(firstBot)).not.toContain("editOriginal");
     expect(methods.slice(firstBot)).toContain("editMessage");
-    // In the thread started from the answer.
-    expect(h.port.calls[firstBot]?.args[0]).toBe(h.port.originalId);
+    // Beside @original in its channel: no thread before the output is whole
+    // and checked, then one on @original, after the last edit.
+    expect(h.port.calls[firstBot]?.args[0]).toBe(CHANNEL);
+    expect(h.port.count("startThread")).toBe(1);
+    expect(methods.indexOf("startThread")).toBeGreaterThan(
+      methods.lastIndexOf("editMessage"),
+    );
+    expect(h.agent.targets.at(-1)?.target).toMatchObject({
+      threadId: h.port.originalId,
+    });
+  });
+
+  it("starts no thread for a 16-minute turn whose answer turns out secret-bearing, and shows none of it", async () => {
+    const secret = `dlhk_${"k9".repeat(12)}`;
+    h.agent.script = [
+      ...words(15, 60_000),
+      { kind: "text", text: `the key is ${secret}` },
+      { wait: 60_000 },
+      { kind: "completion" },
+    ];
+    await h.worker.handle(h.job());
+    expect(h.port.count("createMessage")).toBe(1);
+    expect(h.port.count("startThread")).toBe(0);
+    for (const call of h.port.calls)
+      expect([call.method, JSON.stringify(call.args).includes("k9k9")]).toEqual(
+        [call.method, false],
+      );
+    const bot = h.port.bodies("editMessage");
+    expect(bot.at(-1)?.content).toContain(WORDS.privateAfterExpiry);
+    expect(h.agent.targets).toHaveLength(1);
+    expect(h.agent.targets[0]?.target).not.toHaveProperty("threadId");
   });
 
   it("switches at once after a 404 on the token and never uses it again", async () => {
@@ -214,6 +243,58 @@ describe("/ask end to end (DC-105)", () => {
     expect(h.agent.targets).toHaveLength(1);
     expect(h.agent.targets[0]?.target).not.toHaveProperty("threadId");
   });
+
+  // Not only the answer's words: the question a turn ends on, the run's
+  // error, a file's link and the status line are output too (§2, 5).
+  const OTHER = `dlhk_${"z3".repeat(12)}`;
+  for (const [what, script] of [
+    [
+      "the question it ends on",
+      [
+        { wait: 2000 },
+        { kind: "ask", question: { kind: "text", prompt: `Use ${OTHER}?` } },
+      ],
+    ],
+    [
+      "the run's error",
+      [{ wait: 2000 }, { kind: "error", message: `bad key ${OTHER}` }],
+    ],
+    [
+      "a file's link",
+      [
+        { kind: "file", name: "out.csv", url: `https://x.test/f?t=${OTHER}` },
+        { wait: 2000 },
+        { kind: "completion", text: "Here it is." },
+      ],
+    ],
+    [
+      "the status line",
+      [
+        { kind: "progress", label: `Trying ${OTHER}` },
+        { wait: 2000 },
+        { kind: "text", text: "Done." },
+        { wait: 2000 },
+        { kind: "completion" },
+      ],
+    ],
+  ] as const satisfies readonly (readonly [string, Script])[])
+    it(`answers a credential in ${what} after a public deferral privately: no public text, no thread, one ephemeral follow-up`, async () => {
+      h.agent.script = [...script];
+      await h.worker.handle(h.job());
+      for (const call of h.port.calls.filter(
+        (one) => one.method !== "followUp",
+      ))
+        expect([
+          call.method,
+          JSON.stringify(call.args).includes("z3z3"),
+        ]).toEqual([call.method, false]);
+      expect(h.port.count("startThread")).toBe(0);
+      expect(h.port.count("deleteOriginal")).toBe(1);
+      const follow = h.port.bodies("followUp");
+      expect(follow).toHaveLength(1);
+      expect(follow[0]?.flags).toBe(EPHEMERAL);
+      expect(h.agent.targets).toHaveLength(1);
+    });
 
   it("shows a public answer only whole: while it runs, its status and length; a private one as it is written", async () => {
     h.agent.script = [

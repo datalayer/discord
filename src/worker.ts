@@ -116,6 +116,23 @@ export function secretBearing(text: string): boolean {
   return redact(text) !== text;
 }
 
+/**
+ * Everything of a turn that its messages can show (§2, 5): the answer, the
+ * status line, the run's error, the question it ends on and the files it
+ * names. A credential in any of them makes the whole output private, not
+ * only one in the answer's words.
+ */
+export function shownText(state: TurnState): string {
+  return [
+    state.answer,
+    state.status,
+    state.error ?? "",
+    state.asking?.prompt ?? "",
+    ...(state.asking?.options ?? []),
+    ...state.files.flatMap((file) => [file.name, file.url]),
+  ].join("\n");
+}
+
 /** Where a turn's messages go: the interaction's `@original`, or a bot message. */
 type Surface =
   | { kind: "interaction" }
@@ -475,7 +492,9 @@ export class Worker {
         "SEND_MESSAGES_IN_THREADS",
       ]).length === 0;
     let threadStarted = inThread;
-    let surface: Surface = { kind: "interaction" };
+    // Reassigned inside the callbacks below (the 14-minute switch), which
+    // TypeScript's narrowing does not follow: typed as the union, not narrowed.
+    let surface = { kind: "interaction" } as Surface;
     let secret = false;
     let lastEdit = Number.NEGATIVE_INFINITY;
     let lastRenew = clock.now();
@@ -484,10 +503,11 @@ export class Worker {
     const where = () => (threadStarted ? turn.key.thread : turn.key.channelId);
 
     /**
-     * The answer's thread, started on `@original` once what it shows may be
-     * public (§3.2): never while a secret-bearing answer could follow it, so
-     * no public thread is left on a message that is then deleted. The
-     * session is then mapped again with the thread as its target.
+     * The answer's thread, started on `@original` once the whole output is
+     * checked and may be public (§3.2): only after the turn, never while a
+     * secret-bearing output could still follow, so no public thread is left
+     * on a message that is then deleted. The session is then mapped again
+     * with the thread as its target.
      */
     const openThread = async (): Promise<void> => {
       if (!mayThread || threadStarted || secret) return;
@@ -513,10 +533,13 @@ export class Worker {
       }
     };
 
-    /** From the interaction token to a bot message where it may post (§7.5). */
+    /**
+     * From the interaction token to a bot message where it may post (§7.5):
+     * beside `@original` in its channel (or in the thread it was asked in),
+     * never in a thread started before the output is whole and checked.
+     */
     const toBot = async (): Promise<Surface> => {
       if (job.ephemeral) return { kind: "gone" };
-      await openThread();
       return mayPostIn(threadStarted)
         ? { channelId: where(), kind: "bot" }
         : { kind: "gone" };
@@ -585,7 +608,7 @@ export class Worker {
           stream.sessionId,
           stream.run.id,
         );
-      if (!secret && secretBearing(state.answer)) secret = true;
+      if (!secret && secretBearing(shownText(state))) secret = true;
       if (state.ended) break;
       await progress();
     }
@@ -621,8 +644,9 @@ export class Worker {
       show,
       `dc:open:${openId}`,
     );
-    // The answer was public and whole: its thread now has a place (§3.2).
-    if (!job.ephemeral && surface.kind === "interaction") await openThread();
+    // The output was whole, checked and public: its thread now has a place
+    // on `@original` (§3.2), also after the 14-minute switch.
+    if (!job.ephemeral && surface.kind !== "gone") await openThread();
   }
 
   /** The 14-minute switch (§7.5): from the token to a bot message, or to Datalayer. */

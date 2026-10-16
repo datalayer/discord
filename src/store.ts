@@ -280,7 +280,11 @@ export class MemoryStore implements DiscordStore {
         count += 1;
       }
     for (const [key, one] of [...this.#components])
-      if (one.applicationId === applicationId && one.ownerId === userId) {
+      if (
+        one.applicationId === applicationId &&
+        (one.ownerId === userId ||
+          (one.kind === "ask-message" && one.payload.authorId === userId))
+      ) {
         this.#components.delete(key);
         count += 1;
       } else if (

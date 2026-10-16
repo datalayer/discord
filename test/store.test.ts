@@ -127,8 +127,33 @@ function contract(name: string, make: () => Promise<DiscordStore>) {
         payload: {},
         renderId: "render-0002",
       });
-      // Two links, one thread, one owned component, one answered press.
-      expect(await store.forgetUser(APPLICATION, ALICE)).toBe(5);
+      // Bob's "Ask Datalayer" on Alice's message keeps her id and her text;
+      // Bob's on his own message names nobody forgotten.
+      await store.saveComponent({
+        applicationId: APPLICATION,
+        guildId: GUILD,
+        kind: "ask-message",
+        ownerId: BOB,
+        payload: {
+          authorId: ALICE,
+          content: "Alice's words",
+          messageId: id(5),
+        },
+        renderId: "render-0004",
+      });
+      await store.saveComponent({
+        applicationId: APPLICATION,
+        guildId: GUILD,
+        kind: "ask-message",
+        ownerId: BOB,
+        payload: { authorId: BOB, content: "Bob's words", messageId: id(6) },
+        renderId: "render-0005",
+      });
+      // Two links, one thread, one owned component, one message of hers
+      // asked about, one answered press.
+      expect(await store.forgetUser(APPLICATION, ALICE)).toBe(6);
+      expect(await store.component("render-0004")).toBeUndefined();
+      expect((await store.component("render-0005"))?.ownerId).toBe(BOB);
       expect(await store.linked(APPLICATION, GUILD, ALICE)).toBeUndefined();
       expect(await store.linked(APPLICATION, other, ALICE)).toBeUndefined();
       expect(await store.linkedGuilds(APPLICATION, ALICE)).toEqual([]);
