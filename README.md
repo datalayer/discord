@@ -14,7 +14,7 @@ There are two applications, both owned by a Discord **team**, never by a persona
 
 | Application     | Used for                                          | Public bot | Endpoints                              |
 | --------------- | ------------------------------------------------- | ---------- | -------------------------------------- |
-| `Datalayer Dev` | Local development, through an HTTPS tunnel        | off        | the tunnel's origin                    |
+| `Datalayer Dev` | Development, on r1 (`https://discord-dev.datalayer.run`) | off        | `https://discord-dev.datalayer.run`   |
 | `Datalayer`     | The r1 pilot, the service deployed beside Slack's | on         | the service's host name on r1 (DC-501) |
 
 Do the steps below once for each application. Keep every value you copy in a password manager until it reaches `.env` (development) or the Secret (r1); never paste one into an issue, a chat, a commit or the shell's history.
@@ -41,7 +41,7 @@ Do the steps below once for each application. Keep every value you copy in a pas
 ### 4. Installation
 
 1. **Installation Contexts:** **Guild Install** only. Untick **User Install**.
-2. **Install Link:** **Custom URL**, `<DATALAYER_DISCORD_APP_URL>/discord/install` (development: your tunnel origin, step 7; the pilot: the r1 host). A _Discord Provided Link_ cannot carry Datalayer's bind code, and _None_ would bar the App Directory later.
+2. **Install Link:** **Custom URL**, `<DATALAYER_DISCORD_APP_URL>/discord/install` (`Datalayer Dev`: `https://discord-dev.datalayer.run`; the pilot: `https://discord.datalayer.run`; both run on r1 with cert-manager certificates; a tunnel origin only when you run the service on your own machine, step 7). A _Discord Provided Link_ cannot carry Datalayer's bind code, and _None_ would bar the App Directory later.
 3. **Save Changes**.
 
 ### 5. OAuth2
