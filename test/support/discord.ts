@@ -27,6 +27,7 @@ import {
 import type { AsPerson, Person } from "../../src/as-person.js";
 import type {
   BotAuthorization,
+  ChannelView,
   DiscordPort,
   MessageBody,
   SentMessage,
@@ -173,6 +174,26 @@ export class FakePort implements DiscordPort {
   ): Promise<{ id: string }> {
     this.#record("startThread", [channelId, messageId, name]);
     return { id: messageId };
+  }
+  /** The channels the bot can read: a text channel unless set. */
+  readonly channels = new Map<string, ChannelView>();
+  async channel(channelId: string): Promise<ChannelView> {
+    this.#record("channel", [channelId]);
+    return this.channels.get(channelId) ?? { id: channelId, type: 0 };
+  }
+  async addReaction(
+    channelId: string,
+    messageId: string,
+    emoji: string,
+  ): Promise<void> {
+    this.#record("addReaction", [channelId, messageId, emoji]);
+  }
+  async removeReaction(
+    channelId: string,
+    messageId: string,
+    emoji: string,
+  ): Promise<void> {
+    this.#record("removeReaction", [channelId, messageId, emoji]);
   }
   async botGuilds(after?: string): Promise<Array<{ id: string }>> {
     this.#record("botGuilds", [after]);

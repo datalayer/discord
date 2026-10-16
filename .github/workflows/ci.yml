@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20.19"
+          node-version: "22.20"
       # No lockfile is kept (the monorepo's rule): the exact versions of
       # package.json are installed. agent-runtimes is an optional peer, never
       # installed whole: its pinned release's lib/portable is extracted after

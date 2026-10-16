@@ -187,6 +187,12 @@ export type InteractionJob = Readonly<{
    * edited or deleted. Set by the worker, never by the ingress.
    */
   asBot?: boolean;
+  /**
+   * A turn asked by a message over the gateway (DC-202): what is said only
+   * to the person (a refusal) is a bot reply to that message instead.
+   * Set by the worker, never by the ingress.
+   */
+  replyTo?: Readonly<{ channelId: string; messageId: string }>;
 }>;
 
 /** A message answered inline, ephemeral. */

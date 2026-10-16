@@ -45,6 +45,7 @@ import {
   type ThreadKey,
 } from "./domain.js";
 import { handleEvent, type EventJob } from "./events.js";
+import type { MessageJob } from "./gateway.js";
 import { newRenderId, type InteractionJob } from "./interactions.js";
 import { missingPermissions } from "./permissions.js";
 import {
@@ -91,6 +92,10 @@ export const TURN_RENEW_MS = 60 * 1000;
 
 /** Discord's JSON error code for a server the bot is no longer in. */
 export const UNKNOWN_GUILD = 10004;
+/** The reaction on a message while @Datalayer answers it. */
+export const WAITING = "⏳";
+/** Thread channel types: announcement, public, private. */
+const THREAD_TYPES = new Set([10, 11, 12]);
 /** Discord's code when a thread was already started on the message. */
 export const THREAD_EXISTS = 160004;
 
@@ -179,6 +184,7 @@ export class Worker {
       return this.interaction(job as InteractionJob);
     if (job.kind === "delivery")
       return this.deliveries.receive(job as DeliveryQueueJob);
+    if (job.kind === "message") return this.message(job as MessageJob);
     if (job.kind === "event") {
       await handleEvent(job as EventJob, {
         applicationId: this.deps.applicationId,
@@ -241,6 +247,143 @@ export class Worker {
     }
   }
 
+  /**
+   * A message over the gateway (DC-202): a mention of @Datalayer in a
+   * channel starts a thread on it, keyed by the thread's id, and runs the
+   * person's turn there, posted as the bot; in a thread (a forum post is
+   * one), and in a reply with the ping on to a bot message whose thread
+   * exists, the session continues. ⏳ on the message while it runs. A
+   * message without a question (empty, or a reply with the ping off) is
+   * told once, as a reply, that a mention is what reaches @Datalayer.
+   */
+  async message(job: MessageJob): Promise<void> {
+    const { store, port, cipher } = this.deps;
+    // Direct messages come with their own box (DC-203).
+    if (!job.guildId) return;
+    const installation = await store.installation(
+      job.applicationId,
+      job.guildId,
+    );
+    if (!installation || installation.state === "removed") return;
+    const hostKey = cipher.decrypt(
+      installation.hostKey,
+      externalIdOf(installation.applicationId, installation.guildId),
+    );
+    const prompt = job.content
+      .replace(new RegExp(`<@!?${this.deps.applicationId}>`, "g"), "")
+      .trim();
+    // Said once per message, whatever redelivers it.
+    const reply = async (text: string) => {
+      if (!(await store.claimEvent(`message-said:${job.id}`))) return;
+      await port.createMessage(job.channelId, {
+        allowed_mentions: NO_MENTIONS,
+        content: text,
+        message_reference: { fail_if_not_exists: false, message_id: job.id },
+      });
+    };
+    try {
+      if (!job.mentioned || !prompt)
+        return void (await reply(WORDS.mentionToContinue));
+      if (installation.state === "paused")
+        return void (await reply(WORDS.paused));
+      const link = await this.#linked(installation, hostKey, job.authorId);
+      if (!link.linked) return void (await reply(WORDS.notLinked));
+
+      const base = {
+        applicationId: job.applicationId,
+        guildId: job.guildId,
+      };
+      const channel = await port.channel(job.channelId);
+      let key: ThreadKey | undefined;
+      if (THREAD_TYPES.has(channel.type) && channel.parentId)
+        key = {
+          ...base,
+          channelId: channel.id,
+          parentId: channel.parentId,
+          thread: channel.id,
+        };
+      else if (job.reference) {
+        // A reply to a bot message: its session, when it has one here.
+        const replied: ThreadKey = {
+          ...base,
+          channelId: job.channelId,
+          thread: job.reference.messageId,
+        };
+        const binding = await store.thread(threadIdOf(replied));
+        if (binding?.threadExists)
+          key = {
+            ...replied,
+            channelId: replied.thread,
+            parentId: job.channelId,
+          };
+        else if (binding) key = replied;
+      }
+      if (!key) {
+        // A new thread on the mention: its id is the message's.
+        await port.startThread(
+          job.channelId,
+          job.id,
+          prompt.replace(/\s+/g, " ").slice(0, 90) || "Datalayer",
+        );
+        key = {
+          ...base,
+          channelId: job.id,
+          parentId: job.channelId,
+          thread: job.id,
+        };
+        await port.createMessage(job.id, {
+          allowed_mentions: NO_MENTIONS,
+          content: `-# ${WORDS.mentionReliable}`,
+        });
+      }
+      await port
+        .addReaction(job.channelId, job.id, WAITING)
+        .catch((error: unknown) =>
+          this.deps.logger.warn("reaction.not_added", { error }),
+        );
+      try {
+        await this.#ask(
+          {
+            appPermissions: installation.permissions,
+            asBot: true,
+            command: { name: "ask", options: { question: prompt } },
+            ephemeral: false,
+            id: job.id,
+            key,
+            kind: "interaction",
+            receivedAt: job.receivedAt,
+            replyTo: { channelId: job.channelId, messageId: job.id },
+            threadFromOriginal: false,
+            // No interaction token: a message's turn never uses one.
+            token: cipher.encrypt("", job.id),
+            type: 0,
+            userId: job.authorId,
+            userName: job.authorName,
+          },
+          "",
+          installation,
+          hostKey,
+        );
+      } finally {
+        await port
+          .removeReaction(job.channelId, job.id, WAITING)
+          .catch((error: unknown) =>
+            this.deps.logger.warn("reaction.not_removed", { error }),
+          );
+      }
+    } catch (error) {
+      if (error instanceof DiscordError && error.code === UNKNOWN_GUILD) {
+        await this.deps.removed?.(job.guildId);
+        return;
+      }
+      if (error instanceof DiscordError && error.noAccess) {
+        this.deps.logger.warn("discord.no_access", { error });
+        return;
+      }
+      throw error;
+    }
+  }
+
   /** An answer only the person sees, whatever the deferral was. */
   async #privately(
     job: InteractionJob,
@@ -248,6 +391,18 @@ export class Worker {
     text: string,
     ours = false,
   ): Promise<void> {
+    // A message's turn answers as a reply to that message.
+    if (job.replyTo) {
+      await this.deps.port.createMessage(job.replyTo.channelId, {
+        allowed_mentions: NO_MENTIONS,
+        content: text,
+        message_reference: {
+          fail_if_not_exists: false,
+          message_id: job.replyTo.messageId,
+        },
+      });
+      return;
+    }
     // A pressed choice's turn never touches the answered message.
     if (job.asBot) {
       await this.deps.port.followUp(token, privately(text, ours));

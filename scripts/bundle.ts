@@ -34,7 +34,7 @@ export const BUNDLE: BuildOptions = {
   outdir: "dist",
   platform: "node",
   sourcemap: true,
-  target: "node20",
+  target: "node22",
 };
 
 /** Bundle, and the gate's violations, in words. */

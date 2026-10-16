@@ -4,9 +4,10 @@
 # keeps none). What runs is one esbuild bundle of the service and
 # agent-runtimes' lib/portable: the build stage fetches the pinned
 # release's lib/portable only, bundles and gates it; the runtime stage
-# installs the bundle's externals only.
+# installs the bundle's externals only. Node 22: the gateway role speaks
+# Discord's gateway over Node's own WebSocket (DC-201).
 
-FROM node:20.19-bookworm-slim AS build
+FROM node:22.20.0-bookworm-slim AS build
 WORKDIR /app
 COPY package.json ./
 RUN npm install --ignore-scripts --no-audit --no-fund --no-package-lock
@@ -17,7 +18,7 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run bundle
 
-FROM node:20.19-bookworm-slim AS runtime
+FROM node:22.20.0-bookworm-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 COPY package.json ./

@@ -21,6 +21,14 @@ import {
   type DiscordTurnRequest,
 } from "./domain.js";
 import { eventsRoute } from "./events.js";
+import {
+  Gateway,
+  gatewayBot,
+  PostgresLeaderLock,
+  systemTimers,
+  webSocket,
+  type LeaderLock,
+} from "./gateway.js";
 import { interactionsRoute } from "./interactions.js";
 import { CALLBACK_PATH, INSTALL_PATH, oauthRoutes } from "./oauth.js";
 import { LOG_SALT } from "./observability.js";
@@ -105,7 +113,7 @@ const removal = {
 };
 
 const routes: Routes =
-  role === "worker"
+  role === "worker" || role === "gateway"
     ? {}
     : (() => {
         const oauth = oauthRoutes({
@@ -154,9 +162,36 @@ const server = createHttpServer(resources.checks, routes, (error) =>
   }),
 );
 
+// The one gateway connection: the replica holding the leader lock (DC-201).
+let gateway: Gateway | undefined;
+if (role === "gateway" || role === "all") {
+  const lock: LeaderLock = config.DATABASE_URL
+    ? new PostgresLeaderLock(
+        config.DATABASE_URL,
+        `discord-gateway:${config.DATALAYER_DISCORD_APPLICATION_ID}`,
+      )
+    : // One process without a database (development): it alone leads.
+      {
+        acquire: async () => true,
+        held: async () => true,
+        release: async () => undefined,
+      };
+  gateway = new Gateway({
+    applicationId: config.DATALAYER_DISCORD_APPLICATION_ID,
+    bot: gatewayBot(config.DATALAYER_DISCORD_BOT_TOKEN),
+    enqueue: (job, key) => queue.enqueue(job, key),
+    lock,
+    logger,
+    socket: webSocket,
+    timers: systemTimers,
+    token: config.DATALAYER_DISCORD_BOT_TOKEN,
+  });
+  gateway.start();
+}
+
 const timers: NodeJS.Timeout[] = [];
 let stopPoller = (): void => {};
-if (role !== "ingress") {
+if (role === "worker" || role === "all") {
   const worker = new Worker({
     agent,
     applicationId: config.DATALAYER_DISCORD_APPLICATION_ID,
@@ -225,6 +260,7 @@ const close = async (): Promise<void> => {
   closing = true;
   timers.forEach(clearInterval);
   stopPoller();
+  await gateway?.stop();
   server.close();
   await resources.close();
   logger.info("service.stopped", { role });

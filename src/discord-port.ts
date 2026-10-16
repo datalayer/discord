@@ -15,6 +15,18 @@ export type MessageBody = Readonly<{
   components?: readonly unknown[];
   flags?: number;
   allowed_mentions: Readonly<{ parse: readonly string[]; users?: string[] }>;
+  /** A reply to a message (a bot message answering a person's, DC-202). */
+  message_reference?: Readonly<{
+    message_id: string;
+    fail_if_not_exists: boolean;
+  }>;
+}>;
+
+/** A channel as the bot reads it: its type, and a thread's parent. */
+export type ChannelView = Readonly<{
+  id: string;
+  type: number;
+  parentId?: string;
 }>;
 
 export type SentMessage = Readonly<{ id: string; channelId: string }>;
@@ -65,6 +77,19 @@ export interface DiscordPort {
     messageId: string,
     name: string,
   ): Promise<{ id: string }>;
+  /** A channel's type and parent (a mention's place, DC-202). */
+  channel(channelId: string): Promise<ChannelView>;
+  /** The bot's own reaction on a message (⏳ while it answers). */
+  addReaction(
+    channelId: string,
+    messageId: string,
+    emoji: string,
+  ): Promise<void>;
+  removeReaction(
+    channelId: string,
+    messageId: string,
+    emoji: string,
+  ): Promise<void>;
   /** One page of the bot's guilds, after a guild id: at most 200. */
   botGuilds(after?: string): Promise<Array<{ id: string }>>;
   /** The OAuth2 code exchange of an install. */
@@ -196,6 +221,37 @@ export class HttpDiscordPort implements DiscordPort {
       `/channels/${channelId}/messages/${messageId}/threads`,
       `channel:${channelId}:threads`,
       { body: { auto_archive_duration: 1440, name }, bot: true },
+    );
+  }
+
+  async channel(channelId: string) {
+    const channel = await this.#call<{
+      id: string;
+      type: number;
+      parent_id?: string | null;
+    }>("GET", `/channels/${channelId}`, `channel:${channelId}`, { bot: true });
+    return {
+      id: channel.id,
+      type: channel.type,
+      ...(channel.parent_id ? { parentId: channel.parent_id } : {}),
+    };
+  }
+
+  async addReaction(channelId: string, messageId: string, emoji: string) {
+    await this.#call(
+      "PUT",
+      `/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/@me`,
+      `channel:${channelId}:reactions`,
+      { bot: true },
+    );
+  }
+
+  async removeReaction(channelId: string, messageId: string, emoji: string) {
+    await this.#call(
+      "DELETE",
+      `/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/@me`,
+      `channel:${channelId}:reactions`,
+      { bot: true },
     );
   }
 

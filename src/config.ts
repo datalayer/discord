@@ -18,11 +18,11 @@ const schema = z
     /**
      * What this process does: `ingress` serves Discord's signed
      * requests and persists them, `worker` works the durable queue and reads
-     * the outbox, `all` both (one process: development, tests). Production
-     * runs two ingress replicas and the workers apart; the gateway role comes
-     * with Phase 2 (DC-201).
+     * the outbox, `gateway` holds the one gateway connection (DC-201: the
+     * replica holding the leader lock), `all` every one of them (one process:
+     * development, tests). Production runs each apart.
      */
-    DATALAYER_DISCORD_ROLE: z.enum(["all", "ingress", "worker"]),
+    DATALAYER_DISCORD_ROLE: z.enum(["all", "ingress", "worker", "gateway"]),
     /** The durable store; only development and tests may run without one. */
     DATABASE_URL: secret.optional(),
     DATALAYER_DISCORD_APPLICATION_ID: snowflake,
