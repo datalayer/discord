@@ -21,7 +21,7 @@ FROM node:20.19-bookworm-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 COPY package.json ./
-RUN npm install --omit=dev --omit=peer --ignore-scripts --no-audit --no-fund --no-package-lock \
+RUN npm install --omit=dev --ignore-scripts --no-audit --no-fund --no-package-lock \
   && npm cache clean --force
 COPY --from=build /app/dist ./dist
 COPY migrations ./migrations

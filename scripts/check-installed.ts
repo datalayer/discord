@@ -8,7 +8,8 @@ import {
 
 /**
  * The installed graph of the bundle's externals, as the image's runtime
- * stage installs it (`npm install --omit=dev --omit=peer`): no forbidden
+ * stage installs it (`npm install --omit=dev`; agent-runtimes, an optional
+ * peer, is never installed — npm installs no optional peer): no forbidden
  * package (plans/SLACK.md §4.2, S-005; DISCORD DC-004). Run in CI from the
  * standalone repository, never from the monorepo root, whose extraneous
  * packages it would count.
@@ -16,15 +17,11 @@ import {
 let tree: InstalledTree;
 try {
   tree = JSON.parse(
-    execFileSync(
-      "npm",
-      ["ls", "--omit=dev", "--omit=peer", "--all", "--json"],
-      {
-        encoding: "utf8",
-        maxBuffer: 64 * 1024 * 1024,
-        stdio: ["ignore", "pipe", "ignore"],
-      },
-    ),
+    execFileSync("npm", ["ls", "--omit=dev", "--all", "--json"], {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "ignore"],
+    }),
   ) as InstalledTree;
 } catch (error) {
   // npm ls exits 1 on a problem it still describes in its JSON.

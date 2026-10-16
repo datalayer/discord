@@ -18,7 +18,7 @@ const PORTABLE_ENTRY =
 async function files(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
   const nested = await Promise.all(
-    entries.map((entry) => {
+    entries.map(async (entry) => {
       const path = join(directory, entry.name);
       return entry.isDirectory() ? files(path) : [path];
     }),

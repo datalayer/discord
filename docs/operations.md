@@ -64,5 +64,5 @@ after every `npm install`.
 
 The image is built from a clean `git archive` export (`make image`): the build
 stage installs, fetches and bundles; the runtime stage installs the externals
-only (`--omit=dev --omit=peer`), runs as a non-root user and starts
+only (`--omit=dev`: agent-runtimes is an optional peer, which npm never installs, while the peers of the dependencies — `undici` for Bolt — are kept), runs as a non-root user and starts
 `node dist/index.js`.

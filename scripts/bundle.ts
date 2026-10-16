@@ -42,12 +42,13 @@ export async function bundle(write: boolean): Promise<{
   metafile: Metafile;
   violations: string[];
 }> {
-  const result = await build({ ...BUNDLE, write });
+  const { metafile } = await build({ ...BUNDLE, write });
+  if (!metafile) throw new Error("esbuild answered no metafile.");
   const violations = [
-    ...forbiddenInBundle(result.metafile, dependencies),
+    ...forbiddenInBundle(metafile, dependencies),
     ...(await forbiddenInSources(new URL("src", root).pathname)),
   ];
-  return { metafile: result.metafile, violations };
+  return { metafile, violations };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
