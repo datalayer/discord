@@ -1,8 +1,8 @@
 import type { ApplicationRefusal } from "@datalayer/agent-runtimes/lib/portable/hosts";
 
 /**
- * What @Datalayer says in Discord, in one place (plans/DISCORD.md §2, 10: no
- * silent degradation — each refusal has its sentence and its repair). The
+ * What @Datalayer says in Discord, in one place (no silent degradation —
+ * each refusal has its sentence and its repair). The
  * landing's `/docs/discord` troubleshooting section names the same cases.
  */
 export const WORDS = {
@@ -49,7 +49,7 @@ export function whoDecides(ownerId: string): string {
   return `Only <@${ownerId}> decides this request: it waits on them.`;
 }
 
-/** A resolution refusal in Discord's words (§8). */
+/** A resolution refusal in Discord's words. */
 export function refusalWords(refusal: ApplicationRefusal): string {
   switch (refusal) {
     case "channel-denied":

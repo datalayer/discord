@@ -13,7 +13,7 @@ import {
 import { keyOf } from "../src/interactions.js";
 
 /**
- * The adapter's half of the shared contracts (plans/DISCORD.md §4.3, DC-006):
+ * The adapter's half of the shared contracts (DC-006):
  * Discord's cases in `contracts.json`, read from agent-runtimes'
  * `lib/portable/hosts` (byte-identical to ai-agents' fixture, which ai-agents'
  * `test_app_hosts` reads), produced by this service's own functions.

@@ -6,7 +6,7 @@ import {
 } from "@datalayer/agent-runtimes/lib/portable/hosts";
 
 /**
- * What is Discord's own in a turn (plans/DISCORD.md §4.3, §5): the thread
+ * What is Discord's own in a turn: the thread
  * key, the installation's external id, the session uid, the place sent to
  * Datalayer and the delivery target. The rest is the shared host kit's.
  */
@@ -14,14 +14,14 @@ import {
 /** The host kind Datalayer knows Discord by. */
 export const HOST_KIND = "discord";
 
-/** Where a DM stands in for a guild: `<application_id>:@me` (§4.3, reserved). */
+/** Where a DM stands in for a guild: `<application_id>:@me` (reserved). */
 export const DIRECT = "@me";
 
 /**
  * A Discord conversation: a guild channel, a thread in it (with its parent),
  * or the bot's DM. `thread` is the thread's channel id, or, for a first
  * `/ask` in a channel, the id of the `@original` message the answer's
- * thread starts from (§3.2).
+ * thread starts from.
  */
 export type ThreadKey = Readonly<{
   applicationId: string;
@@ -41,7 +41,7 @@ export type DiscordTurn = Readonly<{
   userId: string;
   /**
    * Whether `key.thread` is a thread that exists: inside a thread, or once
-   * the answer's thread was started from `@original` (§3.2). Until then it
+   * the answer's thread was started from `@original`. Until then it
    * only names the message the thread would start from.
    */
   threadExists: boolean;
@@ -51,7 +51,7 @@ export type DiscordTurn = Readonly<{
 
 export type DiscordTurnRequest = HostTurnRequest<DiscordTurn>;
 
-/** The installation's external id at Datalayer: `<application_id>:<guild_id>` (§4.3). */
+/** The installation's external id at Datalayer: `<application_id>:<guild_id>`. */
 export function externalIdOf(applicationId: string, guildId: string): string {
   return `${applicationId}:${guildId}`;
 }
@@ -78,7 +78,7 @@ export function threadIdOf(key: ThreadKey): string {
 }
 
 /**
- * Where Datalayer checks the channel policy (§4.3, §15, 7): a guild channel
+ * Where Datalayer checks the channel policy: a guild channel
  * as itself, a thread as its parent channel, the bot's DM as `direct`.
  */
 export function placeOf(key: ThreadKey): Place {
@@ -86,7 +86,7 @@ export function placeOf(key: ThreadKey): Place {
   return { id: key.parentId ?? key.channelId, kind: "channel" };
 }
 
-/** `discord-<40 hex>` over application, guild, channel and thread (§4.3). */
+/** `discord-<40 hex>` over application, guild, channel and thread. */
 export function sessionUidOf(key: ThreadKey, generation?: number): string {
   return hostSessionUid(
     HOST_KIND,
@@ -96,10 +96,10 @@ export function sessionUidOf(key: ThreadKey, generation?: number): string {
 }
 
 /**
- * The delivery target handed back with every delivery (§4.3): at most 2 KB,
+ * The delivery target handed back with every delivery: at most 2 KB,
  * validated again when a delivery comes back (`targetSchema`, DC-301). It
  * names a thread only once the thread exists: a first `/ask` is mapped
- * without one, and PUT again once its answer's thread is started (§3.2); a
+ * without one, and PUT again once its answer's thread is started; a
  * private turn says so, so nothing of it is delivered where others read.
  */
 export function targetOf(turn: DiscordTurn): Record<string, unknown> {
@@ -119,7 +119,7 @@ export const discordShape: HostShape<DiscordTurn> = {
   notBound:
     "This server is not connected to Datalayer. An owner adds @Datalayer from Ship → Discord in Datalayer.",
   placeOf: (request) => placeOf(request.provenance.key),
-  // On the turn itself (§4.3, §4.4): where it was asked, at most 1 KiB.
+  // On the turn itself: where it was asked, at most 1 KiB.
   provenanceOf: (request) => ({
     host_kind: HOST_KIND,
     message_id: request.provenance.messageId,

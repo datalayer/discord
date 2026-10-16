@@ -1,6 +1,6 @@
 # ADR 0001: HTTP interactions and a queue first; a gateway role in Phase 2
 
-Status: accepted, 16 October 2026 (plans/DISCORD.md DC-002): proposed and
+Status: accepted, 16 October 2026 (DC-002): proposed and
 acknowledged by the user the same day.
 
 ## Context
@@ -18,13 +18,13 @@ must be answered within three seconds and is never retried.
   the ingress.
 - From Phase 2, one gateway role for mentions and direct messages, holding
   the connection under a PostgreSQL advisory lock, with the three
-  non-privileged intents `GUILDS | GUILD_MESSAGES | DIRECT_MESSAGES` (the
-  user's decision, §15, 3). Interactions stay on HTTP.
+  non-privileged intents `GUILDS | GUILD_MESSAGES | DIRECT_MESSAGES` (the user's decision).
+  Interactions stay on HTTP.
 - `discord-interactions` for signatures, `discord-api-types` for payloads,
   `@discordjs/ws` and `@discordjs/core` for the gateway role (Phase 2).
 - REST over `fetch` with the service's own bucket-aware limiter
   (`src/rate-limit.ts`; amended 16 October 2026, DC-105): the service calls
-  eight routes, and the plan needs every 429 to reach the limiter (counted
+  eight routes, and the service needs every 429 to reach the limiter (counted
   by scope, the invalid-request budget) with a bounded retry, which
   `@discordjs/rest`'s internal queue and retries hide. The limiter reads
   `X-RateLimit-Remaining`/`Reset-After` per route, the global flag and

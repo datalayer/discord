@@ -16,7 +16,7 @@ import type { DiscordStore } from "./store.js";
 import { BodyTooLargeError, rawBodyOf, signedByDiscord } from "./verify.js";
 
 /**
- * `POST /discord/interactions` (plans/DISCORD.md §7.1, DC-102): verify the
+ * `POST /discord/interactions` (DC-102): verify the
  * signature and the window on the raw body (401 otherwise), answer PING,
  * normalize, claim the interaction id and enqueue its job in one
  * transaction, and answer inline within three seconds — a deferral whose
@@ -46,7 +46,7 @@ export const RESPONSE = {
 const THREAD_TYPES = new Set([10, 11, 12]);
 const DM_TYPES = new Set([1, 3]);
 
-/** The component kinds a `custom_id` names (`dc:<kind>:<render id>`, §7.6). */
+/** The component kinds a `custom_id` names (`dc:<kind>:<render id>`). */
 export const COMPONENT_KINDS = [
   "stop",
   "approve",
@@ -155,15 +155,15 @@ export type InteractionJob = Readonly<{
   id: string;
   type: number;
   key: ThreadKey;
-  /** Whether `key.thread` waits for the `@original` message's id (§3.2). */
+  /** Whether `key.thread` waits for the `@original` message's id. */
   threadFromOriginal: boolean;
   userId: string;
   userName: string;
-  /** Encrypted, bound to the interaction id; never logged (§5). */
+  /** Encrypted, bound to the interaction id; never logged. */
   token: EncryptedSecret;
   receivedAt: number;
   appPermissions: string;
-  /** Whether the deferral was ephemeral: Discord keeps it (§7.1). */
+  /** Whether the deferral was ephemeral: Discord keeps it. */
   ephemeral: boolean;
   command?: Readonly<{
     name: string;
@@ -176,7 +176,7 @@ export type InteractionJob = Readonly<{
   fields?: Readonly<Record<string, string>>;
   modal?: string;
   /**
-   * The message *Ask Datalayer* asks about (§3.5, DC-206): set by the
+   * The message *Ask Datalayer* asks about (DC-206): set by the
    * worker, never by the ingress; the turn's provenance names it.
    */
   aboutMessageId?: string;
@@ -254,7 +254,7 @@ function fieldsOf(components: readonly unknown[] = []): Record<string, string> {
   return fields;
 }
 
-/** The conversation an interaction comes from (§4.3). */
+/** The conversation an interaction comes from. */
 export function keyOf(interaction: Interaction): {
   key: ThreadKey;
   threadFromOriginal: boolean;
@@ -287,7 +287,7 @@ export function keyOf(interaction: Interaction): {
       applicationId: interaction.application_id,
       channelId: channel.id,
       guildId: interaction.guild_id,
-      // Filled with the `@original` message's id by the worker (§3.2).
+      // Filled with the `@original` message's id by the worker.
       thread: "",
     },
     threadFromOriginal: true,
@@ -359,7 +359,7 @@ async function answerOf(
   const data = interaction.data ?? {};
 
   if (interaction.type === AUTOCOMPLETE) {
-    // From the cached allowance list, never a network call (§7.1, 5).
+    // From the cached allowance list, never a network call.
     const typed = (focusedOf(data.options) ?? "").toLowerCase();
     const allowances = usableAllowances(
       await store.allowances(key.applicationId, key.guildId),
@@ -380,7 +380,7 @@ async function answerOf(
   }
 
   // The message command: a modal asking what to ask, the target kept for
-  // its submit (§3.5, DC-206). No network call.
+  // its submit (DC-206). No network call.
   if (interaction.type === APPLICATION_COMMAND && data.type === 3) {
     const target = data.target_id
       ? data.resolved?.messages?.[data.target_id]
@@ -442,7 +442,7 @@ async function answerOf(
         .linked(key.applicationId, key.guildId, person.id)
         .catch(() => undefined);
       // Public only in a server, for a linked person who did not ask for
-      // privacy; Discord keeps the deferral's ephemeral state (§2, 5).
+      // privacy; Discord keeps the deferral's ephemeral state.
       ephemeral =
         key.guildId !== DIRECT &&
         (command.options.private === true || linked !== true);
@@ -459,7 +459,7 @@ async function answerOf(
     component = componentOf(data.custom_id ?? "");
     if (!component) return inline(UNKNOWN_COMPONENT);
     if (component.kind === "approve" || component.kind === "reject") {
-      // The confirmation modal at once: type 9 is not allowed later (§7.1).
+      // The confirmation modal at once: type 9 is not allowed later.
       return {
         data: {
           components: [
@@ -487,8 +487,7 @@ async function answerOf(
       };
     }
     if (component.kind === "show" || component.kind === "open") {
-      // Answered privately after a network read (§3.6; *Open in Datalayer*
-      // makes the presser's own one-use link, §4.4).
+      // Answered privately after a network read (*Open in Datalayer* makes the presser's own one-use link).
       answer = { data: { flags: EPHEMERAL }, type: RESPONSE.deferredMessage };
     } else {
       ephemeral = false;
@@ -532,7 +531,7 @@ async function answerOf(
     ...(modal ? { fields: fieldsOf(data.components), modal } : {}),
   };
   try {
-    // The claim and the job in one transaction (§7.1, 4); a duplicate gets
+    // The claim and the job in one transaction; a duplicate gets
     // the same answer it got the first time, and nothing is enqueued.
     const fresh = await dependencies.queue.enqueue(
       job,

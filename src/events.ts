@@ -11,7 +11,7 @@ import type { DiscordStore } from "./store.js";
 import { BodyTooLargeError, rawBodyOf, signedByDiscord } from "./verify.js";
 
 /**
- * `POST /discord/events` (plans/DISCORD.md §7.2, DC-103): Discord's webhook
+ * `POST /discord/events` (DC-103): Discord's webhook
  * events, verified like interactions. PING (type 0) is answered 204; an
  * event is claimed once (by the hash of its body: events carry no id) and
  * persisted, then answered 204 within three seconds. Discord retries an
@@ -19,8 +19,7 @@ import { BodyTooLargeError, rawBodyOf, signedByDiscord } from "./verify.js";
  * app that fails too often: so once persisted, the event's handling runs
  * from the queue, and a handling that fails is dead-lettered there, never a
  * non-2xx here. Only `APPLICATION_AUTHORIZED` is subscribed;
- * `APPLICATION_DEAUTHORIZED` names no server and is never mapped to one
- * (§7.4).
+ * `APPLICATION_DEAUTHORIZED` names no server and is never mapped to one.
  */
 
 const eventSchema = z

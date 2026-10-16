@@ -1,7 +1,7 @@
 import type { Clock } from "@datalayer/agent-runtimes/lib/portable/hosts";
 
 /**
- * Discord's rate limits (plans/DISCORD.md §7.5): per-route buckets read from
+ * Discord's rate limits: per-route buckets read from
  * the `X-RateLimit-*` headers, the global limit, `retry_after` honoured on a
  * 429, and the invalid-request budget — 401, 403 and 429 (except a 429 of
  * the `shared` scope, which Discord does not count) — that bans an IP for a
@@ -27,7 +27,7 @@ export class DiscordRateLimiter {
   readonly #routeOpensAt = new Map<string, number>();
   #globalOpensAt = 0;
   #invalid: number[] = [];
-  /** 429s seen, by scope: what the metrics report (§12.2). */
+  /** 429s seen, by scope: what the metrics report. */
   readonly limited = { global: 0, shared: 0, user: 0 };
 
   constructor(

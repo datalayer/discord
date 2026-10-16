@@ -1,7 +1,7 @@
 # Operating @Datalayer for Discord
 
 The service's settings, roles, health, database and image
-(the landing's `plans/DISCORD.md` §10, DC-008). It
+(DC-008). It
 refuses to start when a setting below is missing or malformed, and says which
 one.
 

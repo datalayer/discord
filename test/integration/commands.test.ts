@@ -16,7 +16,7 @@ import {
 import { connected, harness, type Harness } from "../support/worker.js";
 
 /**
- * `/datalayer` and `/datalayer-admin` (plans/DISCORD.md §6.1, DC-104, DC-106):
+ * `/datalayer` and `/datalayer-admin` (DC-104, DC-106):
  * every answer ephemeral, each subcommand and its refusals, `forget`
  * deleting the person's rows, and administration only for the member linked
  * to the connection's owner.

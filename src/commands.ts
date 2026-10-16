@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 /**
- * Every application command, one definition (`commands/commands.json`,
- * plans/DISCORD.md §6.1), checked against Discord's limits before it is
+ * Every application command, one definition (`commands/commands.json`),
+ * checked against Discord's limits before it is
  * registered: names, descriptions, option counts, guild install only
  * (`integration_types: [0]`), contexts guild and bot DM.
  */

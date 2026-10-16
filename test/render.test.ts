@@ -16,8 +16,8 @@ import {
 import { ALICE } from "./support/discord.js";
 
 /**
- * Discord messages within Discord's limits (plans/DISCORD.md §3.7, DC-306,
- * DC-307): splits at 2000 without breaking a link, mentions inert and never
+ * Discord messages within Discord's limits (DC-306, DC-307):
+ * splits at 2000 without breaking a link, mentions inert and never
  * parsed, routine posts silent in quiet mode, only a decision notice pings,
  * and only its owner.
  */
@@ -62,7 +62,7 @@ describe("splitting (DC-306)", () => {
   });
 });
 
-describe("what of a running answer is public (DC-105, §2 rule 5)", () => {
+describe("what of a running answer is public (DC-105)", () => {
   it("shows where others read only the status and how many words, never the words", () => {
     const state = new TurnState();
     state.apply({ kind: "text", text: "Your key is dlhk_ab" });

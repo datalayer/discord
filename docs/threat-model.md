@@ -1,6 +1,6 @@
 # Threat model (draft)
 
-Status: draft, 16 October 2026 (plans/DISCORD.md DC-003). It is signed off by
+Status: draft, 16 October 2026 (DC-003). It is signed off by
 the user, as security and privacy owner, before a real bot token is stored in
 the `datalayer-discord-env` Secret. Not signed off.
 
@@ -107,7 +107,7 @@ What it allows and requires of this service:
 - **Deletion.** Terms §5: delete API Data promptly when no longer necessary,
   when the application stops, when Discord or the user asks; "an easily
   accessible way to ask for their API Data to be modified and deleted"
-  (`/datalayer forget`, DC-106; 30 days, §15, 10). Unauthorized access to
+  (`/datalayer forget`, DC-106, 30 days). Unauthorized access to
   API Data is notified to Discord and the users affected.
 - **Credentials.** Terms §3: tokens and client secrets encrypted in any file
   a third party can reach; never embedded in open-source code (this

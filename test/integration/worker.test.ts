@@ -42,8 +42,8 @@ import {
 import { connected, harness, type Harness } from "../support/worker.js";
 
 /**
- * `/ask` end to end with a fake clock and a fake Discord port (plans/DISCORD.md
- * §3.2, §7.5, DC-105): edits counted, the thread started on the answer, the
+ * `/ask` end to end with a fake clock and a fake Discord port (DC-105):
+ * edits counted, the thread started on the answer, the
  * final text never repeated, the 14-minute switch and a spent token, missing
  * permissions, an IAM refusal and a secret-bearing output after a public
  * deferral, Stop, and two copies of one job giving one turn.
@@ -246,7 +246,7 @@ describe("/ask end to end (DC-105)", () => {
   });
 
   // Not only the answer's words: the question a turn ends on, the run's
-  // error, a file's link and the status line are output too (§2, 5).
+  // error, a file's link and the status line are output too.
   const OTHER = `dlhk_${"z3".repeat(12)}`;
   for (const [what, script] of [
     [
@@ -314,7 +314,7 @@ describe("/ask end to end (DC-105)", () => {
     expect(edits.at(-1)).toBe("Option B is safer than A");
   });
 
-  it("knows every kind of semantic event, none of which marks an output private: tools and approvals reach a message by name only (§2, 5)", async () => {
+  it("knows every kind of semantic event, none of which marks an output private: tools and approvals reach a message by name only", async () => {
     const events = JSON.parse(
       readFileSync(
         createRequire(import.meta.url).resolve(
@@ -358,7 +358,7 @@ describe("/ask end to end (DC-105)", () => {
     expect(shown).not.toContain("call-7f3e");
   });
 
-  it("maps the session to the channel's message, then again to the thread once it exists (§3.2)", async () => {
+  it("maps the session to the channel's message, then again to the thread once it exists", async () => {
     await h.worker.handle(h.job());
     expect(h.port.count("startThread")).toBe(1);
     const [first, second] = h.agent.targets;
@@ -468,7 +468,7 @@ describe("/ask end to end (DC-105)", () => {
     ).toBe(0);
   });
 
-  it("drops a job past the token's 15 minutes without touching its token, which the queue may have dropped (§5)", async () => {
+  it("drops a job past the token's 15 minutes without touching its token, which the queue may have dropped", async () => {
     const job = h.job();
     h.clock.advance(15 * 60 * 1000);
     const { token: _dropped, ...withoutToken } = job;
@@ -657,7 +657,7 @@ describe("/ask end to end (DC-105)", () => {
   });
 });
 
-describe("Discord's rate limits through the REST port (DC-105, §7.5)", () => {
+describe("Discord's rate limits through the REST port (DC-105)", () => {
   it("honours a 429's retry_after once, counts it, and succeeds", async () => {
     const clock = new FakeClock();
     const limiter = new DiscordRateLimiter(clock);

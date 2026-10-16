@@ -6,12 +6,12 @@ import { describe, expect, it } from "vitest";
 
 import { LOG_SALT, traceAttributes } from "../src/observability.js";
 
-// Built so that no secret scanner's Discord rule matches it (§0.3, 5).
+// Built so that no secret scanner's Discord rule matches it.
 const BOT_TOKEN = ["MTIzNDU2Nzg5MDEyMzQ1Njc4OQ", "GaBcDe", "x".repeat(30)].join(
   ".",
 );
 
-describe("redacted logs and pseudonymous traces (DC-008, §9)", () => {
+describe("redacted logs and pseudonymous traces (DC-008)", () => {
   it("never writes a Discord bot token or an interaction token", () => {
     const lines: string[] = [];
     const logger = new Logger((line) => lines.push(line), undefined, LOG_SALT);

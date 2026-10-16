@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 /**
- * Standalone CI and the image only (plans/DISCORD.md §4.2, DC-004): put the
+ * Standalone CI and the image only (DC-004): put the
  * pinned agent-runtimes release's `lib/portable` — and nothing else of it —
  * at `node_modules/@datalayer/agent-runtimes`, so that the service bundles
  * its hosts entry without installing agent-runtimes' Jupyter and React

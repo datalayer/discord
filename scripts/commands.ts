@@ -3,8 +3,8 @@ import { readFile } from "node:fs/promises";
 import { commandDrift, parseCommands } from "../src/commands.js";
 
 /**
- * Register the application commands, or check them (plans/DISCORD.md §6.1,
- * DC-007): `--schema` checks `commands/commands.json` against Discord's
+ * Register the application commands, or check them (DC-007):
+ * `--schema` checks `commands/commands.json` against Discord's
  * limits, offline (CI); `--check` also compares it with what the
  * application has registered and fails on any difference; with neither, one
  * bulk overwrite (`PUT /applications/{id}/commands`, or the guild's with

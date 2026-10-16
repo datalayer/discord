@@ -6,7 +6,7 @@ import { build, type BuildOptions, type Metafile } from "esbuild";
 import { forbiddenInSources } from "./forbidden-sources.js";
 
 /**
- * The service as it runs (plans/DISCORD.md §4.2, DC-004): one esbuild bundle
+ * The service as it runs (DC-004): one esbuild bundle
  * of its sources and the agent-runtimes `lib/portable` modules they reach,
  * its `dependencies` left external; then the gate over what was bundled
  * (`forbiddenInBundle`) and over the sources. `node --import tsx

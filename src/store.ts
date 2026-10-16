@@ -5,7 +5,7 @@ import type {
 } from "@datalayer/agent-runtimes/lib/portable/hosts";
 
 /**
- * What the service keeps (plans/DISCORD.md §5): installations, link status,
+ * What the service keeps: installations, link status,
  * thread bindings, the running turn's claim, components, the allowance cache
  * and the install's one-use state. PostgreSQL in production
  * (`postgres-store.ts`); this memory store in development and tests, with
@@ -41,7 +41,7 @@ export type ThreadBinding = Readonly<{
   /**
    * The session whose answer the last turn did not show here (the worker
    * stopped, or could not post): a `turn.completed` delivery finishes it
-   * (§3.8, DC-301). Cleared once the answer is shown.
+   * (DC-301). Cleared once the answer is shown.
    */
   unshownSessionUid?: string;
 }>;
@@ -79,7 +79,7 @@ export interface DiscordStore extends DeliveryClaimStore {
     at: Date,
   ): Promise<boolean>;
   installations(state?: InstallationState): Promise<Installation[]>;
-  /** Every row of a removed installation, gone (§5: 24 hours after removal). */
+  /** Every row of a removed installation, gone (24 hours after removal). */
   purgeInstallation(applicationId: string, guildId: string): Promise<void>;
 
   linked(
@@ -97,7 +97,7 @@ export interface DiscordStore extends DeliveryClaimStore {
   linkedGuilds(applicationId: string, userId: string): Promise<string[]>;
   /**
    * Every row naming a person in every server of the application, gone or
-   * no longer naming them (`/datalayer forget`, §5): link status, the
+   * no longer naming them (`/datalayer forget`): link status, the
    * threads they opened, the components they own or answered, their quota
    * counts and their queued or dead jobs (PostgreSQL; the memory store's
    * queue and counts are process memory). How many rows.
@@ -108,7 +108,7 @@ export interface DiscordStore extends DeliveryClaimStore {
   saveThread(binding: ThreadBinding): Promise<void>;
 
   /**
-   * Claim a thread's turn insert-first (§7.5): taken when no turn holds it or
+   * Claim a thread's turn insert-first: taken when no turn holds it or
    * its lease ran out; `again` when this very job already holds it.
    */
   claimTurn(
@@ -139,7 +139,7 @@ export interface DiscordStore extends DeliveryClaimStore {
 
   saveComponent(row: ComponentRow): Promise<void>;
   component(renderId: string): Promise<ComponentRow | undefined>;
-  /** Answer a component once (§7.6): `false` when it was already answered. */
+  /** Answer a component once: `false` when it was already answered. */
   answerComponent(renderId: string, by: string): Promise<boolean>;
   /** An approval's rows in a server (its thread line, its card's buttons), oldest first. */
   approvalComponents(
@@ -157,7 +157,7 @@ export interface DiscordStore extends DeliveryClaimStore {
 
   /**
    * Drop the encrypted interaction token from every queued or dead job
-   * received before `before` (§5: a token is kept only its 15 minutes; the
+   * received before `before` (a token is kept only its 15 minutes; the
    * job, kept 14 days when dead, keeps no spent token). How many.
    */
   dropSpentTokens(before: Date): Promise<number>;

@@ -14,7 +14,7 @@ import { createDatabase } from "./database.js";
 import { PostgresStore } from "./postgres-store.js";
 import { MemoryStore, type DiscordStore } from "./store.js";
 
-/** The service's table prefix: `discord_*` (plans/DISCORD.md §5). */
+/** The service's table prefix: `discord_*`. */
 export const TABLE_PREFIX = "discord";
 
 /** What the queue carries. Each kind of durable work joins it with its box (DC-102 on). */

@@ -1,6 +1,6 @@
 BEGIN;
 
--- plans/DISCORD.md §5, Phase 1 (DC-102 to DC-107). Idempotent; re-applied
+-- Phase 1 (DC-102 to DC-107). Idempotent; re-applied
 -- every time after the shared host schema and 001.
 
 -- What Datalayer signs an installation's pushed deliveries with (DC-301),
@@ -8,7 +8,7 @@ BEGIN;
 ALTER TABLE discord_installation ADD COLUMN IF NOT EXISTS delivery_secret jsonb;
 
 -- Whether a member is linked, as Datalayer last said: what the ingress reads
--- to defer privately an unlinked person's /ask (§7.1, 5). Status only; the
+-- to defer privately an unlinked person's /ask. Status only; the
 -- link itself is ai-agents' record.
 CREATE TABLE IF NOT EXISTS discord_user_link (
   application_id text NOT NULL,
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS discord_user_link (
   PRIMARY KEY (application_id, guild_id, user_id)
 );
 
--- One thread, one session (§2, 2): the session uid's generation, the
+-- One thread, one session: the session uid's generation, the
 -- application it runs, who opened it, and the application chosen for its
 -- next session (/datalayer app, start over).
 CREATE TABLE IF NOT EXISTS discord_thread_binding (
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS discord_thread_binding (
 CREATE INDEX IF NOT EXISTS discord_thread_binding_installation
   ON discord_thread_binding (application_id, guild_id);
 
--- The running turn of a thread, claimed insert-first (§7.5): the job that
+-- The running turn of a thread, claimed insert-first: the job that
 -- holds it, its lease, its run, and whether Stop was pressed.
 CREATE TABLE IF NOT EXISTS discord_turn (
   thread_key text PRIMARY KEY,
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS discord_turn (
   stop_requested boolean NOT NULL DEFAULT false
 );
 
--- What a button or modal refers to (§7.6): a custom_id carries only
+-- What a button or modal refers to: a custom_id carries only
 -- dc:<kind>:<render id>.
 CREATE TABLE IF NOT EXISTS discord_component (
   render_id text PRIMARY KEY,
@@ -64,7 +64,7 @@ CREATE INDEX IF NOT EXISTS discord_component_installation
   ON discord_component (application_id, guild_id);
 
 -- The applications an installation allows, as Datalayer last answered them:
--- what autocomplete offers (§7.1, 5). Never an authorization.
+-- what autocomplete offers. Never an authorization.
 CREATE TABLE IF NOT EXISTS discord_allowance (
   application_id text NOT NULL,
   guild_id text NOT NULL,
@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS discord_allowance (
   PRIMARY KEY (application_id, guild_id)
 );
 
--- The install's signed state, spent once (§3.1, DC-103), with Datalayer's
+-- The install's signed state, spent once (DC-103), with Datalayer's
 -- one-use bind code kept here, encrypted, rather than carried through
 -- Discord's URLs.
 CREATE TABLE IF NOT EXISTS discord_oauth_state (

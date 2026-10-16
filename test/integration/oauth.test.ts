@@ -19,7 +19,7 @@ import {
 } from "../support/discord.js";
 
 /**
- * Install and bind (plans/DISCORD.md §3.1, DC-103): the signed one-use state
+ * Install and bind (DC-103): the signed one-use state
  * keeping Datalayer's bind code server side, the guild read from Discord's
  * token response and refused when the hint differs, a spent or expired bind
  * code storing nothing, a reinstall, and a replayed state.

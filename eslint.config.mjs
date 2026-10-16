@@ -3,7 +3,7 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 // Node globals declared (`URL`, `fetch`, `AbortController`, `process`…), so
-// CI fails where the editor would (plans/DISCORD.md §0.3, 5).
+// CI fails where the editor would.
 export default tseslint.config(
   {
     ignores: ["lib/**", "dist/**", "coverage/**", "node_modules/**"],

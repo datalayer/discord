@@ -9,7 +9,7 @@ import { externalIdOf } from "./domain.js";
 import type { DiscordStore } from "./store.js";
 
 /**
- * Removal from a server (plans/DISCORD.md §7.4, §5, DC-107). Discord sends no
+ * Removal from a server (DC-107). Discord sends no
  * event when a bot is removed from a server (`APPLICATION_DEAUTHORIZED` names
  * a user, never a guild, and is never mapped to one), so a removal is found
  * by Unknown Guild on use and by a daily reconciliation of the bound servers
@@ -22,7 +22,7 @@ import type { DiscordStore } from "./store.js";
 
 /** Discord's page size for `GET /users/@me/guilds`. */
 export const GUILD_PAGE = 200;
-/** The audited grace before a removed server's rows are deleted (§5). */
+/** The audited grace before a removed server's rows are deleted. */
 export const PURGE_AFTER_MS = 24 * 60 * 60 * 1000;
 
 export type RemovalDependencies = Readonly<{

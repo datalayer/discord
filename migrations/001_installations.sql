@@ -1,12 +1,12 @@
 BEGIN;
 
--- plans/DISCORD.md §5. The shared tables (discord_event_claims, discord_jobs,
+-- What the service keeps. The shared tables (discord_event_claims, discord_jobs,
 -- discord_usage, discord_payload_access, discord_job_replays) are the host
 -- kit's: applyHostSchema(db, "discord") from
 -- @datalayer/agent-runtimes/lib/portable/hosts runs before these files
 -- (scripts/migrate.ts). Each file is idempotent and re-applied every time.
 
--- One Discord server bound to one Datalayer organization (§8). The host key
+-- One Discord server bound to one Datalayer organization. The host key
 -- is encrypted (SecretCipher, bound to `<application_id>:<guild_id>`); the
 -- bot token is never stored here: it lives in the Secret and in memory.
 CREATE TABLE IF NOT EXISTS discord_installation (

@@ -21,7 +21,7 @@ import {
 } from "../support/worker.js";
 
 /**
- * The confirmation and the decision (plans/DISCORD.md §3.6, DC-303): the
+ * The confirmation and the decision (DC-303): the
  * submit is the card's owner's only, the approval read again as them, decided
  * once, only while pending and still the presentation shown (its digest);
  * the card and the thread's line then show the outcome without buttons.

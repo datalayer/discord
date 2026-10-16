@@ -15,7 +15,7 @@ import {
 import { connected, harness, type Harness } from "../support/worker.js";
 
 /**
- * *Ask Datalayer* on a message (plans/DISCORD.md §3.5, DC-206): the modal's
+ * *Ask Datalayer* on a message (DC-206): the modal's
  * submit becomes the person's own private turn — the instruction and the
  * message's text quoted, the message as the turn's provenance — answered
  * only to them, in a session of its own, once.

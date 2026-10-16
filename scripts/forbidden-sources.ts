@@ -7,8 +7,8 @@ import {
 } from "@datalayer/agent-runtimes/lib/portable/hosts";
 
 /**
- * What the service's own sources may not import (plans/SLACK.md §4.2, S-005;
- * DISCORD DC-004): the shared forbidden list, and agent-runtimes' portable
+ * What the service's own sources may not import (S-005, DC-004):
+ * the shared forbidden list, and agent-runtimes' portable
  * entry itself, whose types reach Reactor — the service imports only its
  * hosts entry (`@datalayer/agent-runtimes/lib/portable/hosts`).
  */

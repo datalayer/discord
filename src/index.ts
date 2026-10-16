@@ -31,10 +31,10 @@ import { createHttpServer, type Routes } from "./server.js";
 import { TOKEN_LIFETIME_MS, Worker } from "./worker.js";
 
 /**
- * @Datalayer for Discord (plans/DISCORD.md): one process per role. Every
+ * @Datalayer for Discord: one process per role. Every
  * role serves its health; the ingress serves Discord's signed requests and
  * the install, persisting before it answers; the worker works the durable
- * queue and runs the removal reconciliation and purge (§7.4).
+ * queue and runs the removal reconciliation and purge.
  */
 const config = readConfig();
 const logger = new Logger(undefined, undefined, LOG_SALT);
@@ -75,7 +75,7 @@ const agent = new HttpAgentClient<DiscordTurn>(
   fetch,
   hostKeyFor,
 );
-// *Open in Datalayer*: the presser's own host token makes the handoff (§4.4).
+// *Open in Datalayer*: the presser's own host token makes the handoff.
 const openLink = async (
   request: DiscordTurnRequest,
   kind: "session" | "approval",
@@ -84,7 +84,7 @@ const openLink = async (
   const host = await credentials.forTurn(request);
   return (await hosts.handoff(host.accessToken, kind, target)).path;
 };
-// Datalayer as one member: approvals, decisions, a session's answer (§3.6, §3.8).
+// Datalayer as one member: approvals, decisions, a session's answer.
 const asPerson = httpAsPerson(credentials, hosts);
 // Each delivery queued once by its uid; handled from the queue (DC-301).
 const enqueueDelivery = async (job: {
@@ -202,7 +202,7 @@ if (role !== "ingress") {
       60 * 60 * 1000,
     ),
   );
-  // An interaction token outlives its 15 minutes nowhere (§5, §9).
+  // An interaction token outlives its 15 minutes nowhere.
   timers.push(
     setInterval(
       () =>

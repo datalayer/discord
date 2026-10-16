@@ -29,8 +29,8 @@ import type { DiscordStore, Installation } from "./store.js";
 import { WORDS } from "./words.js";
 
 /**
- * Datalayer's deliveries to Discord (plans/DISCORD.md §3.8, DC-301 to
- * DC-303): the shared signed webhook and outbox (`receiveDelivery`, each
+ * Datalayer's deliveries to Discord (DC-301 to DC-303):
+ * the shared signed webhook and outbox (`receiveDelivery`, each
  * handled once by its uid, then acknowledged), shown with the bot token
  * where the session was mapped — an approval as a line in its thread that
  * pings its owner alone with *Show the request* (or the card itself in a
@@ -110,7 +110,7 @@ export type DeliveryDependencies = Readonly<{
   logger: Logger;
   /** How routine posts sound (DC-307): quiet until a server setting says otherwise. */
   mode?: NotificationMode;
-  /** A server Discord says is unknown: removed (§7.4). */
+  /** A server Discord says is unknown: removed. */
   removed?: (guildId: string) => Promise<unknown>;
 }>;
 
@@ -252,7 +252,7 @@ export class DeliveryHandler {
     }>,
   ): Promise<void> {
     const { store, logger } = this.deps;
-    // A private turn shows nothing where others read (§2, 5): its approval
+    // A private turn shows nothing where others read: its approval
     // waits in Datalayer, where its owner is told.
     if (target.private) {
       logger.info("delivery.private", { event: "approval.requested" });
@@ -275,7 +275,7 @@ export class DeliveryHandler {
       ownerId: target.userId,
     };
     if (installation.guildId === DIRECT) {
-      // A DM: the card itself, to the only person who reads there (§3.6).
+      // A DM: the card itself, to the only person who reads there.
       const person = this.#person(
         installation,
         target.userId,
@@ -355,7 +355,7 @@ export class DeliveryHandler {
     });
     const binding = await store.thread(threadKey);
     // Its answer was shown as it streamed: nothing more to say. A private
-    // turn's is never said where others read (§2, 5): it waits in Datalayer.
+    // turn's is never said where others read: it waits in Datalayer.
     if (binding?.unshownSessionUid !== payload.session_uid) return;
     if (target.private) {
       this.deps.logger.info("delivery.private", { event: "turn.completed" });
@@ -415,7 +415,7 @@ export class DeliveryHandler {
   }
 }
 
-/** Save the rows of a card's Approve, Reject and Open buttons (§7.6). */
+/** Save the rows of a card's Approve, Reject and Open buttons. */
 export async function saveCardRows(
   store: DiscordStore,
   common: Readonly<{ applicationId: string; guildId: string; ownerId: string }>,

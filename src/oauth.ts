@@ -15,7 +15,7 @@ import { permissionsInteger } from "./permissions.js";
 import type { DiscordStore } from "./store.js";
 
 /**
- * Install and bind (plans/DISCORD.md §3.1, §6.3, DC-103). The Ship card sends
+ * Install and bind (DC-103). The Ship card sends
  * its owner to `/discord/install?datalayer_bind=<one-use code>`; the service
  * keeps the code, encrypted, under a one-use nonce and sends the browser to
  * Discord's bot authorization (guild install, the code grant required);
@@ -94,7 +94,7 @@ export function nonceOf(state: string, secret: string): string | undefined {
     : undefined;
 }
 
-/** Discord's bot authorization URL for one install (§6.3). */
+/** Discord's bot authorization URL for one install. */
 export function authorizeUrl(
   dependencies: Pick<OAuthDependencies, "applicationId" | "appUrl">,
   state: string,
@@ -167,7 +167,7 @@ export function oauthRoutes(dependencies: OAuthDependencies) {
     if (!kept) return fail(response);
     if (!code) {
       // An install without a code (the code grant is required on the
-      // portal) is refused outside development (§6.3).
+      // portal) is refused outside development.
       return fail(
         response,
         400,

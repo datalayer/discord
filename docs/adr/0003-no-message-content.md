@@ -1,6 +1,6 @@
 # ADR 0003: no MESSAGE_CONTENT
 
-Status: accepted, 16 October 2026 (plans/DISCORD.md DC-002): proposed and
+Status: accepted, 16 October 2026 (DC-002): proposed and
 acknowledged by the user the same day.
 
 ## Decision
@@ -9,7 +9,7 @@ The application asks for no privileged intent. Without `MESSAGE_CONTENT`,
 Discord gives an app the content of a message only when the message mentions
 it, is a DM to it, replies (with ping on reply) to one of its regular
 messages, or is the target of its message command. That is exactly what
-@Datalayer reads (§2, 1); it reads no channel history and monitors nothing.
+@Datalayer reads; it reads no channel history and monitors nothing.
 
 ## Rejected
 
@@ -23,5 +23,5 @@ messages, or is the target of its message command. That is exactly what
 ## Consequences
 
 A reply to an `/ask` answer (an interaction response), or a reply with the
-ping turned off, does not reach Datalayer; the guide says so (§3.3, §10.1).
+ping turned off, does not reach Datalayer; the guide says so.
 Turning on any privileged intent is the user's decision and a new ADR.

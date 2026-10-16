@@ -6,7 +6,7 @@
 
 `@Datalayer` brings a Datalayer application into a Discord server: `/ask` in a channel or thread, the _Ask Datalayer_ message command, `/datalayer` for a person's link and thread, and `/datalayer-admin` for the server. Discord is a host of Datalayer's existing session and approval contracts (the shared host kit in agent-runtimes' `src/portable/hosts`); it is not a separate agent runtime.
 
-The delivery plan is `landings/datalayer/ui/plans/DISCORD.md`. The service's settings, roles, database and image are in [`docs/operations.md`](docs/operations.md); the decisions in [`docs/adr/`](docs/adr/). Nothing is deployed yet: the r1 pilot waits on the applications below, their Secret, a host name and the chart (DC-501).
+The user and administrator documentation is at [datalayer.ai/docs/discord](https://datalayer.ai/docs/discord). The service's settings, roles, database and image are in [`docs/operations.md`](docs/operations.md); the decisions in [`docs/adr/`](docs/adr/). Nothing is deployed yet: the r1 pilot waits on the applications below, their Secret, a host name and the chart (DC-501).
 
 ## Creating the Discord applications
 
@@ -70,13 +70,15 @@ cd tech/datalayer/discord
 cloudflared tunnel --url http://localhost:3000   # or: ngrok http 3000
 ```
 
-Keep the tunnel running and take its `https://…` origin as `DISCORD_APP_URL` (a new origin at each restart: update steps 4, 5 and 8 when it changes). In a second terminal, write `.env` (ignored by Git) and protect it:
+Keep the tunnel running and take its `https://…` origin as `DISCORD_APP_URL` (a new origin at each restart: update steps 4, 5 and 8 when it changes). In a second terminal, create `.env` (ignored by Git), readable by you alone, with a fresh encryption key that is never printed:
 
 ```bash
 cd tech/datalayer/discord
-touch .env && chmod 600 .env
-openssl rand -base64 32   # the encryption key
+umask 077
+printf 'DISCORD_TOKEN_ENCRYPTION_KEY=%s\n' "$(openssl rand -base64 32)" > .env
 ```
+
+Then open `.env` in an editor and add the rest, pasting each value from the password manager (never `echo` one: it would stay in the shell's history):
 
 ```dotenv
 NODE_ENV=development
@@ -86,7 +88,6 @@ DISCORD_APPLICATION_ID=
 DISCORD_PUBLIC_KEY=
 DISCORD_BOT_TOKEN=
 DISCORD_CLIENT_SECRET=
-DISCORD_TOKEN_ENCRYPTION_KEY=
 DISCORD_TOKEN_ENCRYPTION_KEY_VERSION=1
 DISCORD_APP_URL=https://<your tunnel>
 DATALAYER_API_URL=https://r1.datalayer.run

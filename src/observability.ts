@@ -1,7 +1,7 @@
 import { pseudonym } from "@datalayer/agent-runtimes/lib/portable/hosts";
 
 /**
- * Discord's side of the shared observability (plans/DISCORD.md §9, §12.2):
+ * Discord's side of the shared observability:
  * what its pseudonyms are salted with, and its span attribute names. Logs,
  * redaction (Discord's token shapes included), audit and spans are the
  * shared host kit's.

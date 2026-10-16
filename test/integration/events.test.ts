@@ -16,7 +16,7 @@ import {
 } from "../support/discord.js";
 
 /**
- * Webhook events (plans/DISCORD.md §7.2, DC-103): signed like interactions,
+ * Webhook events (DC-103): signed like interactions,
  * PING answered 204, each event persisted once and answered 204, whatever
  * its handling later does; handled in any order.
  */

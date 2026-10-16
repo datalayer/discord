@@ -17,7 +17,7 @@ import {
 import { connected, harness, press, type Harness } from "../support/worker.js";
 
 /**
- * The approval card and *Show the request* (plans/DISCORD.md §3.6, DC-302):
+ * The approval card and *Show the request* (DC-302):
  * the thread shows only that a decision waits; a press of *Show the request*
  * is deferred privately and its `@original` filled with the card for the
  * person it waits on, read as them; anyone else is told who decides; the

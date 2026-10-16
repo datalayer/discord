@@ -26,8 +26,7 @@ import {
  * The store's behavior, on memory and on a throwaway PostgreSQL
  * (`DISCORD_TEST_DATABASE_URL`, never a cluster's): the insert-first turn
  * claim under concurrency, components answered once, the install state spent
- * once, a person forgotten, a removed server purged (plans/DISCORD.md §5,
- * §7.5, DC-105, DC-106, DC-107).
+ * once, a person forgotten, a removed server purged (DC-105, DC-106, DC-107).
  */
 const DATABASE_URL = process.env.DISCORD_TEST_DATABASE_URL;
 
@@ -369,7 +368,7 @@ describe.runIf(Boolean(DATABASE_URL))("on PostgreSQL", () => {
     );
   });
 
-  it("drops a spent interaction token from queued and dead jobs, keeping a live one's (DC-102, §5)", async () => {
+  it("drops a spent interaction token from queued and dead jobs, keeping a live one's (DC-102)", async () => {
     await database.query("TRUNCATE discord_jobs");
     const store = new PostgresStore(database);
     const now = Date.UTC(2026, 9, 16, 12);

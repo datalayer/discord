@@ -6,8 +6,8 @@ import {
 import type { MessageBody } from "./discord-port.js";
 
 /**
- * Discord messages within Discord's limits (plans/DISCORD.md §3.7, §7.5,
- * DC-306, DC-307): answers split at 2000 characters without breaking a link,
+ * Discord messages within Discord's limits (DC-306, DC-307):
+ * answers split at 2000 characters without breaking a link,
  * mentions never parsed but for a decision notice naming its owner, routine
  * posts silent in quiet mode, and the status line under a running answer.
  */
@@ -27,7 +27,7 @@ export const EMBEDS_TOTAL_LIMIT = 6000;
 export const EPHEMERAL = 1 << 6;
 export const SUPPRESS_NOTIFICATIONS = 1 << 12;
 
-/** Nothing pinged: every message but a decision notice (§9). */
+/** Nothing pinged: every message but a decision notice. */
 export const NO_MENTIONS = { parse: [] } as const;
 
 /** How a server hears @Datalayer (DC-307): routine posts silent, or not. */
@@ -98,7 +98,7 @@ export function wordCount(text: string): number {
 
 /**
  * A running turn's message: its status and Stop, and the answer so far only
- * where its person alone reads it. Where others read (`publicly`, §2 rule 5)
+ * where its person alone reads it. Where others read (`publicly`)
  * a running answer is never shown, only how far it has come: whether it
  * bears something private is known only once it is whole, so the whole
  * answer is shown then, once checked, and nothing of a secret-bearing one
@@ -148,7 +148,7 @@ function endingWords(state: TurnState): string {
   return "Done, with nothing to say.";
 }
 
-/** The button that opens a turn's session in Datalayer (§3.2, §4.4). */
+/** The button that opens a turn's session in Datalayer. */
 export const OPEN_LABEL = "Open in Datalayer";
 
 /**

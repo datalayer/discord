@@ -27,7 +27,7 @@ import {
 import { connected, harness, type Harness } from "../support/worker.js";
 
 /**
- * Datalayer's deliveries in Discord (plans/DISCORD.md §3.8, DC-301): the
+ * Datalayer's deliveries in Discord (DC-301): the
  * signed webhook (signature, window, unknown installation), each delivery
  * handled once then acknowledged, a removed installation's dropped, a thread
  * that is gone falling back to its channel, an approval as a line pinging

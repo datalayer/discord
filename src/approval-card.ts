@@ -17,8 +17,8 @@ import {
 } from "./render.js";
 
 /**
- * Discord's approval card and thread line (plans/DISCORD.md §3.6, DC-302,
- * DC-303): the thread shows only that a decision waits for its owner, with
+ * Discord's approval card and thread line (DC-302, DC-303):
+ * the thread shows only that a decision waits for its owner, with
  * *Show the request*; the card itself — every material value whole — is
  * shown to its owner alone, in the press's ephemeral `@original`. *Approve*
  * and *Reject* are offered only for what the server says a host may decide
@@ -186,7 +186,7 @@ export function approvalCard(
 }
 
 /**
- * The thread's line (§3.6, DC-307): the one message that pings, naming the
+ * The thread's line (DC-307): the one message that pings, naming the
  * owner alone; *Show the request* opens the card for them.
  */
 export function waitingLine(
@@ -221,7 +221,7 @@ export function statusWords(status: string): string {
 }
 
 /**
- * The line or card once decided (§3.6): its outcome, by whom when Discord
+ * The line or card once decided: its outcome, by whom when Discord
  * knows them (named, never pinged), and no buttons.
  */
 export function decidedBody(

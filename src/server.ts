@@ -41,7 +41,7 @@ export function routeOf(
 }
 
 /**
- * The service's HTTP server (plans/DISCORD.md §4): `/healthz` and `/readyz`
+ * The service's HTTP server: `/healthz` and `/readyz`
  * on every role; the ingress adds Discord's routes (`POST
  * /discord/interactions`, DC-102; `GET /discord/install`, `GET
  * /discord/oauth/callback`, `POST /discord/events`, DC-103; `POST

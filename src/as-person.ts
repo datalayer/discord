@@ -7,7 +7,7 @@ import {
 } from "@datalayer/agent-runtimes/lib/portable/hosts";
 
 /**
- * Datalayer as one Discord member (plans/DISCORD.md §3.6, §3.8, §4.4): the
+ * Datalayer as one Discord member: the
  * installation's host key exchanged for that member's fifteen-minute host
  * token on one deployment, then an approval read or decided, or a session's
  * last answer read, as them. A member who is not linked, or

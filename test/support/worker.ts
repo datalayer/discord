@@ -23,10 +23,10 @@ import {
   testCipher,
 } from "./discord.js";
 
-/** A worker over fakes, and a builder of its `/ask` jobs (plans/DISCORD.md §12.1). */
+/** A worker over fakes, and a builder of its `/ask` jobs. */
 
 const TOKEN = "interaction-token-for-tests";
-/** Everything the bot asks for (§6.2). */
+/** Everything the bot asks for. */
 const ALL = "309237763136";
 
 export type Harness = Readonly<{

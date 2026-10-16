@@ -21,7 +21,7 @@ import {
 import { connected, harness } from "../support/worker.js";
 
 /**
- * Removal (plans/DISCORD.md §7.4, DC-107): no event says a bot left a server,
+ * Removal (DC-107): no event says a bot left a server,
  * so Unknown Guild on use and the paginated daily reconciliation find it;
  * each marks the installation removed once and revokes it at Datalayer; late
  * work does nothing; the rows go 24 hours later.

@@ -64,20 +64,20 @@ import type {
 import { refusalWords, whoDecides, WORDS } from "./words.js";
 
 /**
- * The worker (plans/DISCORD.md §7.5): what the ingress persisted, answered.
+ * The worker: what the ingress persisted, answered.
  * `/ask` end to end — the installation, the person's link, the application
  * (the shared resolution helper), quotas, the thread's turn claimed
  * insert-first, the turn started as the speaker (idempotent on the
  * interaction id), its stream reduced into the shared `TurnState` and edited
  * into `@original` at a bounded cadence, the thread started on the answer,
  * the switch to the bot token at 14 minutes or on a spent token, Stop, and a
- * private or refused turn after a public deferral answered ephemerally
- * (§7.1). Also `/datalayer` and the components of Phase 1.
+ * private or refused turn after a public deferral answered ephemerally.
+ * Also `/datalayer` and the components of Phase 1.
  */
 
-/** The bounded edit cadence: at most one edit every 1.5 s (§7.5). */
+/** The bounded edit cadence: at most one edit every 1.5 s. */
 export const EDIT_INTERVAL_MS = 1500;
-/** How long Discord honours an interaction token (§5, §9). */
+/** How long Discord honours an interaction token. */
 export const TOKEN_LIFETIME_MS = 15 * 60 * 1000;
 /** When the worker stops using the interaction token (valid 15 minutes). */
 export const TOKEN_SWITCH_MS = 14 * 60 * 1000;
@@ -99,11 +99,11 @@ export type WorkerDependencies = Readonly<{
     "self" | "linkState" | "linkCode" | "unlink" | "admin" | "acknowledge"
   >;
   /**
-   * Datalayer as one member (§3.6, §3.8): an approval read or decided, a
+   * Datalayer as one member: an approval read or decided, a
    * session's last answer read, with that member's own host token.
    */
   asPerson: AsPerson;
-  /** Runs turns, and maps a session again once its answer's thread exists (§3.2). */
+  /** Runs turns, and maps a session again once its answer's thread exists. */
   agent: AgentClient<DiscordTurn> & SessionBinder<DiscordTurn>;
   quotas: QuotaStore;
   limits: QuotaLimits;
@@ -111,7 +111,7 @@ export type WorkerDependencies = Readonly<{
   logger: Logger;
   webUrl: string;
   /**
-   * *Open in Datalayer* (§4.4, S-305): a one-use path that opens a session
+   * *Open in Datalayer* (S-305): a one-use path that opens a session
    * or an approval for the person `request` speaks for (their host token's
    * handoff).
    */
@@ -122,14 +122,14 @@ export type WorkerDependencies = Readonly<{
   ) => Promise<string>;
   /** This worker process: two copies of one job never both run a turn. */
   instance?: string;
-  /** A server Discord says is unknown: removed (§7.4, `removal.ts`). */
+  /** A server Discord says is unknown: removed (`removal.ts`). */
   removed?: (guildId: string) => Promise<unknown>;
 }>;
 
 export { secretBearing };
 
 /**
- * Everything of a turn that its messages can show (§2, 5): the answer, the
+ * Everything of a turn that its messages can show: the answer, the
  * status line, the run's error, the question it ends on and the files it
  * names. A credential in any of them makes the whole output private, not
  * only one in the answer's words.
@@ -187,7 +187,7 @@ export class Worker {
 
   async interaction(job: InteractionJob): Promise<void> {
     // A spent token is never used: a job that waited past 15 minutes says
-    // nothing, and its token may already be dropped from the queue (§5).
+    // nothing, and its token may already be dropped from the queue.
     if (this.deps.clock.now() - job.receivedAt >= TOKEN_LIFETIME_MS) {
       this.deps.logger.warn("interaction.expired", { interaction: job.id });
       return;
@@ -199,7 +199,7 @@ export class Worker {
       job.key.applicationId,
       job.key.guildId,
     );
-    // Late work of a removed server is dropped, never reviving it (§7.4).
+    // Late work of a removed server is dropped, never reviving it.
     if (installation?.state === "removed") return;
     if (!installation) return say(WORDS.notConnected);
     const hostKey = this.deps.cipher.decrypt(
@@ -236,7 +236,7 @@ export class Worker {
     }
   }
 
-  /** An answer only the person sees, whatever the deferral was (§7.1). */
+  /** An answer only the person sees, whatever the deferral was. */
   async #privately(
     job: InteractionJob,
     token: string,
@@ -304,7 +304,7 @@ export class Worker {
     if (self.paused) return say(WORDS.paused);
 
     // The thread: a first `/ask` in a channel is keyed on its `@original`
-    // message, from which the answer's thread starts (§3.2).
+    // message, from which the answer's thread starts.
     let key: ThreadKey = job.key;
     let messageId = job.id;
     if (job.threadFromOriginal) {
@@ -347,7 +347,7 @@ export class Worker {
     });
     if (!resolution.ok) return say(refusalWords(resolution.refusal));
 
-    // One turn per thread, claimed insert-first (§7.5). A second copy of
+    // One turn per thread, claimed insert-first. A second copy of
     // this very job (another worker) says nothing; another person's prompt
     // is told what runs. Nothing is charged before the claim.
     const now = new Date(clock.now());
@@ -363,7 +363,7 @@ export class Worker {
       return say(WORDS.busy);
     }
     try {
-      // Quotas are taken once per interaction (§9): a retried job, which
+      // Quotas are taken once per interaction: a retried job, which
       // the runtime answers from the same turn, is never charged again.
       const refused = await this.#charge(job, key, installation, resolution);
       if (refused) return await say(refused);
@@ -459,7 +459,7 @@ export class Worker {
         messageId: turn.messageId,
         private: job.ephemeral,
         // A first `/ask`'s thread does not exist yet: mapped without it,
-        // then PUT again once it is started (§3.2, `openThread` below).
+        // then PUT again once it is started (`openThread` below).
         threadExists: inThread,
         userId: job.userId,
       },
@@ -495,7 +495,7 @@ export class Worker {
       threadKey: turn.threadKey,
     };
     // Unshown until the answer is shown here: a `turn.completed` delivery
-    // finishes a turn the worker could not (§3.8, DC-301).
+    // finishes a turn the worker could not (DC-301).
     await store.saveThread({ ...bound, unshownSessionUid: stream.sessionId });
     await store.setTurnRun(turn.threadKey, turn.owner, stream.sessionId);
     const sessionId = stream.sessionId;
@@ -542,7 +542,7 @@ export class Worker {
 
     /**
      * The answer's thread, started on `@original` once the whole output is
-     * checked and may be public (§3.2): only after the turn, never while a
+     * checked and may be public: only after the turn, never while a
      * secret-bearing output could still follow, so no public thread is left
      * on a message that is then deleted. The session is then mapped again
      * with the thread as its target.
@@ -572,7 +572,7 @@ export class Worker {
     };
 
     /**
-     * From the interaction token to a bot message where it may post (§7.5):
+     * From the interaction token to a bot message where it may post:
      * beside `@original` in its channel (or in the thread it was asked in),
      * never in a thread started before the output is whole and checked.
      */
@@ -621,7 +621,7 @@ export class Worker {
         lastRenew = now;
       }
       if (now - lastEdit < EDIT_INTERVAL_MS) return;
-      // Where others read (§2, 5) the running answer is never shown: only
+      // Where others read the running answer is never shown: only
       // its status and length, the whole answer once it is checked.
       const body = progressBody(
         state,
@@ -683,14 +683,14 @@ export class Worker {
       `dc:open:${openId}`,
     );
     // The output was whole, checked and public: its thread now has a place
-    // on `@original` (§3.2), also after the 14-minute switch.
+    // on `@original`, also after the 14-minute switch.
     if (!job.ephemeral && surface.kind !== "gone") await openThread();
     // Shown (or said private): no delivery repeats it. A turn that could
     // show nothing stays unshown for `turn.completed`.
     if (surface.kind !== "gone") await store.saveThread(bound);
   }
 
-  /** The 14-minute switch (§7.5): from the token to a bot message, or to Datalayer. */
+  /** The 14-minute switch: from the token to a bot message, or to Datalayer. */
   async #switch(
     job: InteractionJob,
     token: string,
@@ -797,7 +797,7 @@ export class Worker {
       );
     }
     if (sub === "forget") {
-      // Forgotten everywhere it is forgotten (§5): unlinked at Datalayer in
+      // Forgotten everywhere it is forgotten: unlinked at Datalayer in
       // every server of this application where the service knew a link,
       // and every row naming them here deleted, not only this server's.
       const guilds = new Set([
@@ -871,7 +871,7 @@ export class Worker {
             : "Start over works inside a thread @Datalayer answers in.",
         );
       const threadKey = threadIdOf(job.key);
-      // Only an authorized person starts over or switches (§2, 2): linked,
+      // Only an authorized person starts over or switches: linked,
       // and the thread's opener while one is recorded.
       const link = await this.#linked(installation, hostKey, job.userId);
       if (!link.linked) return say(WORDS.notLinked);
@@ -929,7 +929,7 @@ export class Worker {
   }
 
   /**
-   * `/datalayer-admin` (§6.1, DC-106): Discord shows it only to members with
+   * `/datalayer-admin` (DC-106): Discord shows it only to members with
    * Manage Server; Datalayer then lets only the member linked to the
    * connection's owner pause, resume or set this channel's rule.
    */
@@ -1017,7 +1017,7 @@ export class Worker {
   }
 
   /**
-   * *Open in Datalayer* (§4.4): the person the button is for (who asked, or
+   * *Open in Datalayer*: the person the button is for (who asked, or
    * whom an approval waits on), linked, gets their own one-use link to the
    * session or the approval, answered only to them. Datalayer checks the
    * target against their host token's deployment when it makes the link,
@@ -1090,7 +1090,7 @@ export class Worker {
   }
 
   /**
-   * *Ask Datalayer* on a message (§3.5, DC-206): the modal's submit, by the
+   * *Ask Datalayer* on a message (DC-206): the modal's submit, by the
    * person who opened it, becomes their own private turn — the instruction
    * and the message's text, quoted as what it is, with the message as the
    * turn's provenance — answered only to them. Its row is answered once.
@@ -1158,7 +1158,7 @@ export class Worker {
   }
 
   /**
-   * *Show the request* (§3.6, DC-302): the press was deferred privately
+   * *Show the request* (DC-302): the press was deferred privately
    * (type 5, flag 64), so its `@original` is filled with the card for the
    * person the approval waits on, read as them; anyone else is told who
    * decides. An approval no longer pending updates its thread line instead.
@@ -1236,7 +1236,7 @@ export class Worker {
   }
 
   /**
-   * A confirmed Approve or Reject (§3.6, DC-303): the modal's submit was
+   * A confirmed Approve or Reject (DC-303): the modal's submit was
    * deferred as an update of the card, so the card is edited once decided
    * and anything else is said in a private follow-up. Only the person the
    * card was made for decides; the approval is read again as them, decided
@@ -1349,7 +1349,7 @@ export class Worker {
     const { store } = this.deps;
     const component = job.component!;
     const row = await store.component(component.renderId);
-    // An unknown, foreign or transplanted component does nothing (§7.6).
+    // An unknown, foreign or transplanted component does nothing.
     if (
       !row ||
       row.kind !== component.kind ||

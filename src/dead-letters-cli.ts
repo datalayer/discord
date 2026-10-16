@@ -10,7 +10,7 @@ import { TABLE_PREFIX } from "./resources.js";
 
 /**
  * `node dist/dead-letters.js list | replay <id> | payload <id> <reason…>`
- * against DATABASE_URL, as DATALAYER_OPERATOR (plans/DISCORD.md DC-403):
+ * against DATABASE_URL, as DATALAYER_OPERATOR (DC-403):
  * the shared host kit's dead letters over `discord_jobs`.
  */
 const url = process.env.DATABASE_URL;

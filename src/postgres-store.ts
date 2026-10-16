@@ -13,7 +13,7 @@ import type {
   TurnClaim,
 } from "./store.js";
 
-/** The memory store's behavior on PostgreSQL (`migrations/`, plans/DISCORD.md §5). */
+/** The memory store's behavior on PostgreSQL (`migrations/`). */
 
 type InstallationRow = {
   application_id: string;
@@ -128,7 +128,7 @@ export class PostgresStore implements DiscordStore {
     state: InstallationState,
     at: Date,
   ) {
-    // A removed installation never comes back but by a new install (§7.4).
+    // A removed installation never comes back but by a new install.
     const { rowCount } = await this.database.query(
       `UPDATE discord_installation
          SET state = $3, updated_at = now(),
@@ -222,7 +222,7 @@ export class PostgresStore implements DiscordStore {
         )
       ).rowCount ?? 0;
     // Another person's "Ask Datalayer" on their message keeps its author and
-    // text until it is submitted (§3.5): deleted with them.
+    // text until it is submitted: deleted with them.
     count +=
       (
         await this.database.query(
@@ -230,7 +230,7 @@ export class PostgresStore implements DiscordStore {
           [applicationId, userId],
         )
       ).rowCount ?? 0;
-    // A press is kept answered (§7.6), by nobody it names.
+    // A press is kept answered, by nobody it names.
     count +=
       (
         await this.database.query(
@@ -306,7 +306,7 @@ export class PostgresStore implements DiscordStore {
     leaseUntil: Date,
     now: Date,
   ): Promise<TurnClaim> {
-    // Insert first: a missing row cannot let two workers start (§7.5). The
+    // Insert first: a missing row cannot let two workers start. The
     // row is taken over only from its own owner or once its lease ran out.
     const { rows } = await this.database.query<{
       owner: string;

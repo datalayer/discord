@@ -23,7 +23,7 @@ const defined = async (): Promise<CommandDefinition[]> =>
     ),
   );
 
-describe("the application commands (DC-007, §6.1)", () => {
+describe("the application commands (DC-007)", () => {
   it("defines /ask, /datalayer, /datalayer-admin and Ask Datalayer, guild install only, within Discord's limits", async () => {
     const commands = await defined();
     expect(commands.map((one) => one.name)).toEqual([
@@ -86,13 +86,13 @@ describe("the application commands (DC-007, §6.1)", () => {
   });
 });
 
-describe("the bot's permissions (DC-007, §6.2)", () => {
+describe("the bot's permissions (DC-007)", () => {
   it("is the integer computed from the table: 309237763136, without USE_APPLICATION_COMMANDS", () => {
     expect(permissionsInteger()).toBe("309237763136");
     expect(BOT_PERMISSIONS.map((one) => one.name)).not.toContain(
       "USE_APPLICATION_COMMANDS",
     );
-    // With it, the plan's other candidate.
+    // With it, the other candidate.
     expect(
       permissionsInteger([
         ...BOT_PERMISSIONS,

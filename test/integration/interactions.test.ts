@@ -25,7 +25,7 @@ import {
 } from "../support/discord.js";
 
 /**
- * The interactions endpoint on a real socket (plans/DISCORD.md §7.1, DC-102):
+ * The interactions endpoint on a real socket (DC-102):
  * signature and window on the raw body, PING, normalize, claim and enqueue
  * in one transaction, the deferral's ephemeral state, and an explicit
  * refusal when nothing could be persisted.

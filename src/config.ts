@@ -1,9 +1,9 @@
 import { z } from "zod";
 
 /**
- * The service's settings (plans/DISCORD.md §10, DC-008), read once at start
+ * The service's settings (DC-008), read once at start
  * and refused by name when one is missing or malformed: no default stands in
- * for a credential, an address or a key (fail fast, §2 rule 13).
+ * for a credential, an address or a key (fail fast).
  */
 
 const secret = z.string().min(1);
@@ -16,7 +16,7 @@ const schema = z
     NODE_ENV: z.enum(["development", "test", "production"]),
     PORT: z.coerce.number().int().positive().default(3000),
     /**
-     * What this process does (§4, §10): `ingress` serves Discord's signed
+     * What this process does: `ingress` serves Discord's signed
      * requests and persists them, `worker` works the durable queue and reads
      * the outbox, `all` both (one process: development, tests). Production
      * runs two ingress replicas and the workers apart; the gateway role comes

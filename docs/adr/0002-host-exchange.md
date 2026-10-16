@@ -1,6 +1,6 @@
 # ADR 0002: the host exchange, as Slack's
 
-Status: accepted, 16 October 2026 (plans/DISCORD.md DC-002): proposed and
+Status: accepted, 16 October 2026 (DC-002): proposed and
 acknowledged by the user the same day.
 
 Discord takes the host credential exchange of the Slack service's ADR 0002
@@ -15,12 +15,12 @@ Only Discord's differences are recorded here.
 1. **The fifteen-minute interaction token.** An interaction's token is valid
    fifteen minutes, like the host token, but they are unrelated: a long turn
    exchanges again as needed, and its answer moves to the bot token in the
-   thread at fourteen minutes (§7.5). Neither token is ever kept beyond its
+   thread at fourteen minutes. Neither token is ever kept beyond its
    life; the interaction token is encrypted while stored.
 2. **A thread is sent as its parent channel.** `place` has only `kind` and
    `id` and ignores extra keys, so a thread is sent as
    `{kind: "channel", id: <parent channel id>}`: its policy is its parent's
-   (the user's decision, §15, 7), with no server change.
+   (the user's decision), with no server change.
 
 ## Rejected
 

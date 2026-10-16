@@ -37,8 +37,8 @@ import { createHttpServer, type Routes } from "../../src/server.js";
 import type { Installation } from "../../src/store.js";
 
 /**
- * Test doubles for Discord and Datalayer (plans/DISCORD.md §12.1: ordinary
- * tests need neither). Ids are built so no secret scanner takes them for
+ * Test doubles for Discord and Datalayer (ordinary tests need neither).
+ * Ids are built so no secret scanner takes them for
  * credentials; nothing here is one.
  */
 

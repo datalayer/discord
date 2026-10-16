@@ -1,7 +1,7 @@
 import type { DiscordRateLimiter } from "./rate-limit.js";
 
 /**
- * Discord's REST API as the service uses it (plans/DISCORD.md §7.1, §7.5):
+ * Discord's REST API as the service uses it:
  * the interaction's `@original` (read, edited, deleted), follow-ups, bot
  * messages and threads once the interaction token is spent, the bot's guild
  * list for the removal reconciliation, and the OAuth2 code exchange. The
@@ -29,7 +29,7 @@ export class DiscordError extends Error {
     super(`Discord answered ${status} to ${route}${code ? ` (${code})` : ""}`);
   }
 
-  /** The interaction token is spent or unknown: never used again (§7.5). */
+  /** The interaction token is spent or unknown: never used again. */
   get tokenGone(): boolean {
     return this.status === 404 || this.code === 50027;
   }
@@ -40,7 +40,7 @@ export class DiscordError extends Error {
   }
 }
 
-/** What the bot authorization's token response says (§3.1, 4): the guild is read here. */
+/** What the bot authorization's token response says: the guild is read here. */
 export type BotAuthorization = Readonly<{
   guild?: Readonly<{ id: string; name?: string }>;
   permissions?: string;

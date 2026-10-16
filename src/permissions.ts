@@ -1,5 +1,5 @@
 /**
- * What the install link asks of a server (plans/DISCORD.md §6.2): each
+ * What the install link asks of a server: each
  * permission with its bit and why the bot needs it, and the integer the
  * install link carries, computed from the table, never typed by hand. No
  * administrator, manage, mention-everyone or private-thread permission.

@@ -3,7 +3,7 @@ import { verifyKey } from "discord-interactions";
 import type { IncomingMessage } from "node:http";
 
 /**
- * Discord's signed requests (plans/DISCORD.md §7.1, 1; §7.2): the raw body
+ * Discord's signed requests: the raw body
  * kept, Ed25519 over `X-Signature-Timestamp + rawBody` with the
  * application's public key (`discord-interactions`, Discord's own), and the
  * timestamp within the shared five-minute window either way. Discord sends

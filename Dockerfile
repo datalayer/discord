@@ -1,8 +1,8 @@
-# @Datalayer for Discord (plans/DISCORD.md §10, DC-008). Built from a clean
+# @Datalayer for Discord (DC-008). Built from a clean
 # export of this repository (git archive), never a working tree. The exact
 # versions of package.json are installed; no lockfile is read (the monorepo
 # keeps none). What runs is one esbuild bundle of the service and
-# agent-runtimes' lib/portable (§4.2): the build stage fetches the pinned
+# agent-runtimes' lib/portable: the build stage fetches the pinned
 # release's lib/portable only, bundles and gates it; the runtime stage
 # installs the bundle's externals only.
 
