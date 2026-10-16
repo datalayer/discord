@@ -155,24 +155,84 @@ export const START_OVER_LABEL = "Start over";
 /** On a private *Ask Datalayer* answer: post it in the message's thread. */
 export const POST_LABEL = "Post in thread";
 
+/** On a question answered in Datalayer (a choice of more than five, text, a file, a form). */
+export const ANSWER_LABEL = "Answer in Datalayer";
+/** At most this many choices are buttons; more are answered in Datalayer. */
+export const ASK_BUTTONS = 5;
+/** A button's label limit: a longer choice is listed whole in the text. */
+const BUTTON_LABEL_LIMIT = 80;
+
+/** What a question the turn ended on (`loop.ask`) asks of Discord. */
+export type Asking = NonNullable<TurnState["asking"]>;
+
+/**
+ * How a question is answered here (DC-304): five or fewer choices as
+ * buttons, every other known kind in Datalayer, and a kind this service
+ * does not know refused (said, and answered in Datalayer only).
+ */
+export function askingMode(
+  question: Asking,
+): "buttons" | "datalayer" | "refused" {
+  const kind: string = question.kind;
+  switch (kind) {
+    case "choice": {
+      const count = question.options?.length ?? 0;
+      return count > 0 && count <= ASK_BUTTONS ? "buttons" : "datalayer";
+    }
+    case "text":
+    case "file":
+    case "form":
+      return "datalayer";
+    default:
+      return "refused";
+  }
+}
+
+/** The question's words: its prompt, and each choice in full when a button would cut one. */
+function askingWords(question: Asking): string {
+  const prompt = inertMentions(question.prompt.trim());
+  const mode = askingMode(question);
+  if (mode === "refused")
+    return `${prompt}\n\n-# @Datalayer cannot show this kind of question here: answer it in Datalayer.`;
+  const options = question.options ?? [];
+  if (mode === "buttons")
+    return options.some((one) => one.length > BUTTON_LABEL_LIMIT)
+      ? [
+          prompt,
+          ...options.map((one, at) => `${at + 1}. ${inertMentions(one)}`),
+        ].join("\n")
+      : prompt;
+  return [
+    prompt,
+    ...(question.kind === "choice"
+      ? options.map((one, at) => `${at + 1}. ${inertMentions(one)}`)
+      : []),
+    "-# Answer it in Datalayer.",
+  ].join("\n");
+}
+
 /**
  * An ended turn's messages: the whole answer split within the limit, the
  * first for `@original` (or the first bot message), the rest after it; no
  * Stop button, the stream's text never repeated (`TurnState` keeps it once).
  * With `openId`, the last carries *Open in Datalayer*, a press that makes
  * the presser's own one-use link (never a link written into the message,
- * which would expire or be spent by another).
+ * which would expire or be spent by another) — *Answer in Datalayer* when
+ * the turn ends on a question not answered here. A question answered here
+ * carries its choices (`choiceIds`, one per option, in order) on the last.
  */
 export function finalBodies(
   state: TurnState,
   flags = 0,
   openId?: string,
   postId?: string,
+  choiceIds?: readonly string[],
 ): MessageBody[] {
   const answer = inertMentions(state.answer.trim());
   const files = state.files.length
     ? [state.files.map((file) => `[${file.name}](${file.url})`).join("\n")]
     : [];
+  const asking = state.asking;
   const parts = answer
     ? [
         answer,
@@ -180,41 +240,47 @@ export function finalBodies(
         ...(state.ending === "error"
           ? [`-# Could not finish: ${state.error ?? "the run failed"}`]
           : []),
+        ...(asking ? [askingWords(asking)] : []),
         ...files,
       ]
-    : [endingWords(state), ...files];
+    : [asking ? askingWords(asking) : endingWords(state), ...files];
   const text = parts.join("\n\n");
   const chunks = splitText(text);
+  const choices =
+    asking && choiceIds && askingMode(asking) === "buttons"
+      ? (asking.options ?? []).map((label, at) => ({
+          custom_id: choiceIds[at]!,
+          label:
+            label.length > BUTTON_LABEL_LIMIT
+              ? `${at + 1}. ${label.slice(0, BUTTON_LABEL_LIMIT - 5)}…`
+              : label,
+          style: 1,
+          type: 2,
+        }))
+      : [];
+  const answeredThere = Boolean(asking) && choices.length === 0;
+  const buttons = [
+    ...(openId
+      ? [
+          {
+            custom_id: openId,
+            label: answeredThere ? ANSWER_LABEL : OPEN_LABEL,
+            style: 2,
+            type: 2,
+          },
+        ]
+      : []),
+    ...(postId
+      ? [{ custom_id: postId, label: POST_LABEL, style: 2, type: 2 }]
+      : []),
+  ];
   return chunks.map((content, at) => ({
     allowed_mentions: NO_MENTIONS,
     components:
-      (openId || postId) && at === chunks.length - 1
+      at === chunks.length - 1
         ? [
-            {
-              components: [
-                ...(openId
-                  ? [
-                      {
-                        custom_id: openId,
-                        label: OPEN_LABEL,
-                        style: 2,
-                        type: 2,
-                      },
-                    ]
-                  : []),
-                ...(postId
-                  ? [
-                      {
-                        custom_id: postId,
-                        label: POST_LABEL,
-                        style: 2,
-                        type: 2,
-                      },
-                    ]
-                  : []),
-              ],
-              type: 1,
-            },
+            ...(choices.length ? [{ components: choices, type: 1 }] : []),
+            ...(buttons.length ? [{ components: buttons, type: 1 }] : []),
           ]
         : [],
     content,

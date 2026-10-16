@@ -181,6 +181,12 @@ export type InteractionJob = Readonly<{
    * worker, never by the ingress; the turn's provenance names it.
    */
   aboutMessageId?: string;
+  /**
+   * A turn posted as the bot from its start (a question's choice pressed,
+   * DC-304): the press's `@original` is the answered message and is never
+   * edited or deleted. Set by the worker, never by the ingress.
+   */
+  asBot?: boolean;
 }>;
 
 /** A message answered inline, ephemeral. */

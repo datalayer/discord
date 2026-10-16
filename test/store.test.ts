@@ -214,6 +214,41 @@ function contract(name: string, make: () => Promise<DiscordStore>) {
       );
     });
 
+    it("keeps whether a binding's thread exists, and answers an asking event once whichever of its buttons is pressed (DC-304)", async () => {
+      const store = await make();
+      await store.saveThread({
+        applicationId: APPLICATION,
+        channelId: id(3),
+        generation: 0,
+        guildId: GUILD,
+        threadExists: true,
+        threadKey: "t-asked",
+      });
+      expect((await store.thread("t-asked"))?.threadExists).toBe(true);
+      await store.saveThread({
+        applicationId: APPLICATION,
+        channelId: id(3),
+        generation: 1,
+        guildId: GUILD,
+        threadKey: "t-asked",
+      });
+      expect((await store.thread("t-asked"))?.threadExists).toBeUndefined();
+      await store.saveComponent({
+        applicationId: APPLICATION,
+        guildId: GUILD,
+        kind: "asking",
+        ownerId: ALICE,
+        payload: {},
+        renderId: "asking-event-1",
+      });
+      const presses = await Promise.all(
+        Array.from({ length: 4 }, () =>
+          store.answerComponent("asking-event-1", ALICE),
+        ),
+      );
+      expect(presses.filter(Boolean)).toHaveLength(1);
+    });
+
     it("keeps a server's quiet or noisy, quiet at install, never on a removed server (DC-307)", async () => {
       const store = await make();
       const cipher = testCipher();

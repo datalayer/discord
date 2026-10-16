@@ -42,6 +42,8 @@ export type ThreadBinding = Readonly<{
   deploymentUid?: string;
   nextDeploymentUid?: string;
   openedBy?: string;
+  /** Whether its thread exists in Discord: where a later turn posts (DC-304). */
+  threadExists?: boolean;
   /**
    * The session whose answer the last turn did not show here (the worker
    * stopped, or could not post): a `turn.completed` delivery finishes it

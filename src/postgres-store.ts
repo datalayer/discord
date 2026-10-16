@@ -55,6 +55,7 @@ type ThreadRow = {
   next_deployment_uid: string | null;
   opened_by: string | null;
   unshown_session_uid: string | null;
+  thread_exists: boolean;
 };
 
 const threadOf = (row: ThreadRow): ThreadBinding => ({
@@ -69,6 +70,7 @@ const threadOf = (row: ThreadRow): ThreadBinding => ({
     ? { nextDeploymentUid: row.next_deployment_uid }
     : {}),
   ...(row.opened_by ? { openedBy: row.opened_by } : {}),
+  ...(row.thread_exists ? { threadExists: true } : {}),
   ...(row.unshown_session_uid
     ? { unshownSessionUid: row.unshown_session_uid }
     : {}),
@@ -293,8 +295,8 @@ export class PostgresStore implements DiscordStore {
       `INSERT INTO discord_thread_binding
          (thread_key, application_id, guild_id, channel_id, session_uid,
           generation, deployment_uid, next_deployment_uid, opened_by,
-          unshown_session_uid)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          unshown_session_uid, thread_exists)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (thread_key) DO UPDATE SET
          session_uid = EXCLUDED.session_uid,
          generation = EXCLUDED.generation,
@@ -302,6 +304,7 @@ export class PostgresStore implements DiscordStore {
          next_deployment_uid = EXCLUDED.next_deployment_uid,
          opened_by = EXCLUDED.opened_by,
          unshown_session_uid = EXCLUDED.unshown_session_uid,
+         thread_exists = EXCLUDED.thread_exists,
          updated_at = now()`,
       [
         binding.threadKey,
@@ -314,6 +317,7 @@ export class PostgresStore implements DiscordStore {
         binding.nextDeploymentUid ?? null,
         binding.openedBy ?? null,
         binding.unshownSessionUid ?? null,
+        binding.threadExists ?? false,
       ],
     );
   }

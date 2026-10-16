@@ -54,6 +54,7 @@ import {
   OPEN_LABEL,
   privately,
   progressBody,
+  askingMode,
   secretBearing,
   START_OVER_LABEL,
 } from "./render.js";
@@ -247,6 +248,11 @@ export class Worker {
     text: string,
     ours = false,
   ): Promise<void> {
+    // A pressed choice's turn never touches the answered message.
+    if (job.asBot) {
+      await this.deps.port.followUp(token, privately(text, ours));
+      return;
+    }
     if (job.ephemeral) {
       await this.deps.port.editOriginal(token, {
         ...privately(text, ours),
@@ -496,6 +502,7 @@ export class Worker {
       guildId: turn.key.guildId,
       openedBy: turn.binding?.openedBy ?? job.userId,
       sessionUid: stream.sessionId,
+      threadExists: inThread,
       threadKey: turn.threadKey,
     };
     // Unshown until the answer is shown here: a `turn.completed` delivery
@@ -586,6 +593,9 @@ export class Worker {
         ? { channelId: where(), kind: "bot" }
         : { kind: "gone" };
     };
+
+    // A pressed choice's turn posts as the bot from its start (DC-304).
+    if (job.asBot) surface = await toBot();
 
     const show = async (body: MessageBody): Promise<void> => {
       if (
@@ -707,6 +717,46 @@ export class Worker {
         renderId: postId,
       });
     }
+    // A question it ended on: five or fewer choices as buttons for the
+    // person who asked, answered once per asking event (one `asking` row
+    // all its buttons point at); never on a private or secret answer.
+    let choiceIds: string[] | undefined;
+    const asking = state.asking;
+    if (
+      asking &&
+      askingMode(asking) === "buttons" &&
+      !job.ephemeral &&
+      !secret &&
+      surface.kind !== "gone"
+    ) {
+      const askingId = newRenderId();
+      await store.saveComponent({
+        applicationId: turn.key.applicationId,
+        guildId: turn.key.guildId,
+        kind: "asking",
+        ownerId: job.userId,
+        payload: { sessionUid: sessionId, threadKey: turn.threadKey },
+        renderId: askingId,
+      });
+      choiceIds = [];
+      for (const option of asking.options ?? []) {
+        const choiceId = newRenderId();
+        await store.saveComponent({
+          applicationId: turn.key.applicationId,
+          guildId: turn.key.guildId,
+          kind: "answer",
+          ownerId: job.userId,
+          payload: {
+            askingId,
+            key: turn.key,
+            option,
+            threadKey: turn.threadKey,
+          },
+          renderId: choiceId,
+        });
+        choiceIds.push(`dc:answer:${choiceId}`);
+      }
+    }
     await this.#finish(
       job,
       token,
@@ -716,13 +766,15 @@ export class Worker {
       show,
       `dc:open:${openId}`,
       postId && `dc:post:${postId}`,
+      choiceIds,
     );
     // The output was whole, checked and public: its thread now has a place
     // on `@original`, also after the 14-minute switch.
     if (!job.ephemeral && surface.kind !== "gone") await openThread();
     // Shown (or said private): no delivery repeats it. A turn that could
     // show nothing stays unshown for `turn.completed`.
-    if (surface.kind !== "gone") await store.saveThread(bound);
+    if (surface.kind !== "gone")
+      await store.saveThread({ ...bound, threadExists: threadStarted });
   }
 
   /** The 14-minute switch: from the token to a bot message, or to Datalayer. */
@@ -754,6 +806,7 @@ export class Worker {
     show: (body: MessageBody) => Promise<void>,
     openId: string,
     postId?: string,
+    choiceIds?: readonly string[],
   ): Promise<void> {
     const { port } = this.deps;
     if (surface.kind === "gone") return;
@@ -783,6 +836,7 @@ export class Worker {
       job.ephemeral ? EPHEMERAL : 0,
       openId,
       postId,
+      choiceIds,
     );
     await show(bodies[0]!);
     for (const body of bodies.slice(1)) {
@@ -1127,6 +1181,7 @@ export class Worker {
       guildId: key.guildId,
       threadKey,
       ...(binding?.openedBy ? { openedBy: binding.openedBy } : {}),
+      ...(binding?.threadExists ? { threadExists: true } : {}),
       ...((nextDeploymentUid ?? binding?.nextDeploymentUid)
         ? { nextDeploymentUid: nextDeploymentUid ?? binding?.nextDeploymentUid }
         : {}),
@@ -1262,6 +1317,62 @@ export class Worker {
         // thread's or the channel's, which others read.
         key: { ...job.key, thread: "" },
         threadFromOriginal: true,
+      },
+      token,
+      installation,
+      hostKey,
+    );
+  }
+
+  /**
+   * A question's choice pressed (DC-304): by the person who asked, once per
+   * asking event — the first choice answers it, any later press of any of
+   * its buttons is told so. The choice is their own next turn in the
+   * session, posted as the bot in the session's thread (or beside the
+   * answered message when no thread exists), never over the answered message.
+   */
+  async #answer(
+    job: InteractionJob,
+    token: string,
+    installation: Installation,
+    hostKey: string,
+    row: ComponentRow,
+  ): Promise<void> {
+    const { port, store } = this.deps;
+    const say = (text: string) => port.followUp(token, privately(text));
+    if (row.ownerId !== job.userId) return void (await say(WORDS.notYours));
+    const { askingId, option, threadKey } = row.payload;
+    const key = row.payload.key as ThreadKey | undefined;
+    if (
+      typeof askingId !== "string" ||
+      typeof option !== "string" ||
+      typeof threadKey !== "string" ||
+      !key
+    )
+      throw new Error(`A choice's row names no question: ${row.renderId}`);
+    if (!(await store.answerComponent(askingId, job.userId)))
+      return void (await say(WORDS.alreadyAnswered));
+    await store.answerComponent(row.renderId, job.userId);
+    const binding = await store.thread(threadKey);
+    // Where the session's thread is: the key keeps the thread's id (the
+    // answered message's, for a first `/ask`); a thread not started leaves
+    // the answer beside that message in its channel.
+    const where: ThreadKey =
+      binding?.threadExists && !key.parentId
+        ? {
+            ...key,
+            channelId: key.thread,
+            parentId: key.channelId,
+          }
+        : key;
+    return this.#ask(
+      {
+        ...job,
+        asBot: true,
+        command: { name: "ask", options: { question: option } },
+        ephemeral: false,
+        key: where,
+        threadFromOriginal: false,
       },
       token,
       installation,
@@ -1718,6 +1829,8 @@ export class Worker {
       });
       return;
     }
+    if (component.kind === "answer")
+      return this.#answer(job, token, installation, hostKey, row);
     if (component.kind === "start-over") {
       if (row.ownerId !== job.userId) {
         await this.deps.port.followUp(token, privately(WORDS.notYours));
