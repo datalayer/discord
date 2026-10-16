@@ -1,7 +1,12 @@
 import { MemoryWorkQueue } from "@datalayer/agent-runtimes/lib/portable/hosts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { sessionUidOf, threadIdOf, type ThreadKey } from "../../src/domain.js";
+import {
+  discordShape,
+  sessionUidOf,
+  threadIdOf,
+  type ThreadKey,
+} from "../../src/domain.js";
 import { interactionsRoute, RESPONSE } from "../../src/interactions.js";
 import { EPHEMERAL, START_OVER_LABEL } from "../../src/render.js";
 import type { DiscordJob } from "../../src/resources.js";
@@ -272,5 +277,41 @@ describe("components through the interaction handler (DC-207)", () => {
     expect(turn?.sessionGeneration).toBe(1);
     expect(turn?.sessionId).toBeUndefined();
     expect(h.agent.targets[0]?.sessionId).not.toBe(sessionUidOf(IN_THREAD, 0));
+  });
+
+  it("opens a new session uid on the next mention after the Start over press (DC-202)", async () => {
+    h.port.channels.set(THREAD, { id: THREAD, parentId: CHANNEL, type: 11 });
+    await datalayer(ALICE, "start-over");
+    const { customId, message } = shown();
+    await interact(
+      ALICE,
+      { component_type: 2, custom_id: customId },
+      3,
+      message,
+    );
+    // The next mention in the thread, over the gateway.
+    await h.worker.handle({
+      applicationId: APPLICATION,
+      authorId: ALICE,
+      authorName: "alice",
+      channelId: THREAD,
+      content: `<@${APPLICATION}> Start fresh`,
+      guildId: GUILD,
+      id: id(1500),
+      kind: "message",
+      mentioned: true,
+      receivedAt: h.clock.now(),
+    });
+    const [turn] = h.agent.started;
+    expect(turn?.prompt).toBe("Start fresh");
+    expect(turn?.sessionGeneration).toBe(1);
+    // No session kept: the agent client opens the uid the shape derives
+    // for generation 1, a new one.
+    expect(turn?.sessionId).toBeUndefined();
+    expect(discordShape.sessionUidOf(turn!)).toBe(sessionUidOf(IN_THREAD, 1));
+    expect(discordShape.sessionUidOf(turn!)).not.toBe(
+      sessionUidOf(IN_THREAD, 0),
+    );
+    expect((await h.store.thread(threadIdOf(IN_THREAD)))?.generation).toBe(1);
   });
 });
