@@ -1,3 +1,10 @@
-# Findings gitleaks may report that are not credentials, one per line as
-# <commit>:<file>:<rule>:<line>, each with why. None yet: test tokens are
-# built so that no Discord rule matches them.
+# Findings gitleaks reports that are not credentials, one per line as
+# <commit>:<file>:<rule>:<line>, each with why. Test tokens are built so that
+# no Discord rule matches them.
+
+# The README's .env template: the discord-client-secret rule matches across the
+# two empty lines `DATALAYER_DISCORD_BOT_TOKEN=` and
+# `DATALAYER_DISCORD_CLIENT_SECRET=` (the second key's name read as the first
+# key's value). No value is there. Later commits put a comment line between the
+# two keys so the rule no longer spans them.
+19015ce1246d35935cb72b61100c034615bfbc8f:README.md:discord-client-secret:89

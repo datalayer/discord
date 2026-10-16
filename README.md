@@ -6,16 +6,16 @@
 
 `@Datalayer` brings a Datalayer application into a Discord server: `/ask` in a channel or thread, the _Ask Datalayer_ message command, `/datalayer` for a person's link and thread, and `/datalayer-admin` for the server. Discord is a host of Datalayer's existing session and approval contracts (the shared host kit in agent-runtimes' `src/portable/hosts`); it is not a separate agent runtime.
 
-The user and administrator documentation is at [datalayer.ai/docs/discord](https://datalayer.ai/docs/discord). The service's settings, roles, database and image are in [`docs/operations.md`](docs/operations.md); the decisions in [`docs/adr/`](docs/adr/). Nothing is deployed yet: the r1 pilot waits on the applications below, their Secret, a host name and the chart (DC-501).
+The user and administrator documentation is at [datalayer.ai/docs/discord](https://datalayer.ai/docs/discord). The service's settings, roles, database and image are in [`docs/operations.md`](docs/operations.md); the decisions in [`docs/adr/`](docs/adr/). `discord:0.1.0` runs on r1 (the ingress and worker roles) at `https://discord-dev.datalayer.run` for `Datalayer Dev`; the pilot's host `https://discord.datalayer.run` has its certificate and waits on the pilot application (DC-501).
 
 ## Creating the Discord applications
 
 There are two applications, both owned by a Discord **team**, never by a personal account (verification later asks for the team owner's identity):
 
-| Application     | Used for                                          | Public bot | Endpoints                              |
-| --------------- | ------------------------------------------------- | ---------- | -------------------------------------- |
-| `Datalayer Dev` | Development, on r1 (`https://discord-dev.datalayer.run`) | off        | `https://discord-dev.datalayer.run`   |
-| `Datalayer`     | The r1 pilot, the service deployed beside Slack's | on         | the service's host name on r1 (DC-501) |
+| Application     | Used for                                                 | Public bot | Endpoints                              |
+| --------------- | -------------------------------------------------------- | ---------- | -------------------------------------- |
+| `Datalayer Dev` | Development, on r1 (`https://discord-dev.datalayer.run`) | off        | `https://discord-dev.datalayer.run`    |
+| `Datalayer`     | The r1 pilot, the service deployed beside Slack's        | on         | the service's host name on r1 (DC-501) |
 
 Do the steps below once for each application. Keep every value you copy in a password manager until it reaches `.env` (development) or the Secret (r1); never paste one into an issue, a chat, a commit or the shell's history.
 
@@ -87,6 +87,7 @@ DATALAYER_DISCORD_ROLE=all
 DATALAYER_DISCORD_APPLICATION_ID=
 DATALAYER_DISCORD_PUBLIC_KEY=
 DATALAYER_DISCORD_BOT_TOKEN=
+# The OAuth2 page's client secret (Reset Secret shows it once).
 DATALAYER_DISCORD_CLIENT_SECRET=
 DATALAYER_DISCORD_TOKEN_ENCRYPTION_KEY_VERSION=1
 DATALAYER_DISCORD_APP_URL=https://<your tunnel>
@@ -117,15 +118,15 @@ Then set `DATALAYER_DISCORD_ENABLED=true` in `~/.datalayer/datalayerrc-r1` and r
 
 Once the service answers on its host (`https://discord-dev.datalayer.run` for `Datalayer Dev`, `https://discord.datalayer.run` for the pilot; both run on r1 with Let's Encrypt certificates), open the application at [discord.com/developers/applications](https://discord.com/developers/applications) and fill these four fields, each followed by **Save Changes** (the green bar at the bottom):
 
-| Left menu | Field | `Datalayer Dev` | The pilot (`Datalayer`) |
-|---|---|---|---|
-| **General Information** | **Interactions Endpoint URL** | `https://discord-dev.datalayer.run/discord/interactions` | `https://discord.datalayer.run/discord/interactions` |
-| **Webhooks** | **Endpoint URL**, then switch **Events** on and tick **Application Authorized** only | `https://discord-dev.datalayer.run/discord/events` | `https://discord.datalayer.run/discord/events` |
-| **OAuth2** | **Redirects → Add Redirect** | `https://discord-dev.datalayer.run/discord/oauth/callback` | `https://discord.datalayer.run/discord/oauth/callback` |
-| **Installation** | **Install Link → Custom URL** | `https://discord-dev.datalayer.run/discord/install` | `https://discord.datalayer.run/discord/install` |
+| Left menu               | Field                                                                                | `Datalayer Dev`                                            | The pilot (`Datalayer`)                                |
+| ----------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------- | ------------------------------------------------------ |
+| **General Information** | **Interactions Endpoint URL**                                                        | `https://discord-dev.datalayer.run/discord/interactions`   | `https://discord.datalayer.run/discord/interactions`   |
+| **Webhooks**            | **Endpoint URL**, then switch **Events** on and tick **Application Authorized** only | `https://discord-dev.datalayer.run/discord/events`         | `https://discord.datalayer.run/discord/events`         |
+| **OAuth2**              | **Redirects → Add Redirect**                                                         | `https://discord-dev.datalayer.run/discord/oauth/callback` | `https://discord.datalayer.run/discord/oauth/callback` |
+| **Installation**        | **Install Link → Custom URL**                                                        | `https://discord-dev.datalayer.run/discord/install`        | `https://discord.datalayer.run/discord/install`        |
 
 - Discord saves the **Interactions Endpoint URL** only when the service answers its test: a PING it must answer, and a request with a bad signature it must refuse. If saving fails, the service is not running or its `DATALAYER_DISCORD_PUBLIC_KEY` is not this application's.
-- Discord also tests the **Webhooks** endpoint when events are switched on. *Application Deauthorized* stays unticked: it names no server.
+- Discord also tests the **Webhooks** endpoint when events are switched on. _Application Deauthorized_ stays unticked: it names no server.
 - On the **Bot** page, check two switches: **Requires OAuth2 Code Grant** on (every install passes through `/discord/oauth/callback` and is bound to a Datalayer organization), and **Public Bot** off for `Datalayer Dev` (on for the pilot only when other servers may install it).
 
 Check what Discord saved, from the bot token (it prints the settings, never the token):
