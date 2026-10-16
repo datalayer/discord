@@ -130,6 +130,28 @@ export class PostgresStore implements DiscordStore {
     );
   }
 
+  async directChoice(applicationId: string, userId: string) {
+    const { rows } = await this.database.query<{ guild_id: string }>(
+      "SELECT guild_id FROM discord_direct_choice WHERE application_id = $1 AND user_id = $2",
+      [applicationId, userId],
+    );
+    return rows[0]?.guild_id;
+  }
+
+  async setDirectChoice(
+    applicationId: string,
+    userId: string,
+    guildId: string,
+  ) {
+    await this.database.query(
+      `INSERT INTO discord_direct_choice (application_id, user_id, guild_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (application_id, user_id) DO UPDATE SET
+         guild_id = EXCLUDED.guild_id, chosen_at = now()`,
+      [applicationId, userId, guildId],
+    );
+  }
+
   async gatewaySession(applicationId: string) {
     const { rows } = await this.database.query<{
       session_id: string;
@@ -218,6 +240,7 @@ export class PostgresStore implements DiscordStore {
       "discord_user_link WHERE application_id = $1 AND guild_id = $2",
       "discord_component WHERE application_id = $1 AND guild_id = $2",
       "discord_allowance WHERE application_id = $1 AND guild_id = $2",
+      "discord_direct_choice WHERE application_id = $1 AND guild_id = $2",
       "discord_installation WHERE application_id = $1 AND guild_id = $2",
     ])
       await this.database.query(`DELETE FROM ${table}`, [
@@ -261,6 +284,13 @@ export class PostgresStore implements DiscordStore {
     if (!/^\d{17,20}$/.test(userId) || !/^\d{17,20}$/.test(applicationId))
       throw new Error("forgetUser names a Discord application and user id.");
     let count = 0;
+    count +=
+      (
+        await this.database.query(
+          "DELETE FROM discord_direct_choice WHERE application_id = $1 AND user_id = $2",
+          [applicationId, userId],
+        )
+      ).rowCount ?? 0;
     count +=
       (
         await this.database.query(

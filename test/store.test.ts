@@ -249,6 +249,21 @@ function contract(name: string, make: () => Promise<DiscordStore>) {
       expect(presses.filter(Boolean)).toHaveLength(1);
     });
 
+    it("keeps the server a person's direct messages go to, forgets it with them and with the server (DC-203)", async () => {
+      const store = await make();
+      const cipher = testCipher();
+      await store.saveInstallation(installation(cipher));
+      expect(await store.directChoice(APPLICATION, ALICE)).toBeUndefined();
+      await store.setDirectChoice(APPLICATION, ALICE, id(4));
+      await store.setDirectChoice(APPLICATION, ALICE, GUILD);
+      expect(await store.directChoice(APPLICATION, ALICE)).toBe(GUILD);
+      await store.forgetUser(APPLICATION, ALICE);
+      expect(await store.directChoice(APPLICATION, ALICE)).toBeUndefined();
+      await store.setDirectChoice(APPLICATION, ALICE, GUILD);
+      await store.purgeInstallation(APPLICATION, GUILD);
+      expect(await store.directChoice(APPLICATION, ALICE)).toBeUndefined();
+    });
+
     it("keeps the gateway session a stopping leader leaves, once, per application (DC-201)", async () => {
       const store = await make();
       expect(await store.gatewaySession(APPLICATION)).toBeUndefined();

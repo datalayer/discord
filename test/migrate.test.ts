@@ -41,6 +41,7 @@ describe.runIf(Boolean(DATABASE_URL))("migrate on PostgreSQL", () => {
         ...hostTables("discord"),
         "discord_allowance",
         "discord_component",
+        "discord_direct_choice",
         "discord_gateway_session",
         "discord_installation",
         "discord_oauth_state",

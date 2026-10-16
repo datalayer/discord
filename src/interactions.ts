@@ -57,6 +57,7 @@ export const COMPONENT_KINDS = [
   "start-over",
   "open",
   "post",
+  "direct",
 ] as const;
 export type ComponentKind = (typeof COMPONENT_KINDS)[number];
 

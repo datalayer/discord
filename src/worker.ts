@@ -38,6 +38,7 @@ import {
 import {
   DIRECT,
   externalIdOf,
+  isDirect,
   placeOf,
   threadIdOf,
   type DiscordTurn,
@@ -205,7 +206,7 @@ export class Worker {
     }
     const token = this.deps.cipher.decrypt(job.token, job.id);
     const say = (text: string) => this.#privately(job, token, text);
-    if (job.key.guildId === DIRECT) return say(WORDS.directLater);
+    if (job.key.guildId === DIRECT) return this.#directInteraction(job, token);
     const installation = await this.deps.store.installation(
       job.key.applicationId,
       job.key.guildId,
@@ -258,8 +259,7 @@ export class Worker {
    */
   async message(job: MessageJob): Promise<void> {
     const { store, port, cipher } = this.deps;
-    // Direct messages come with their own box (DC-203).
-    if (!job.guildId) return;
+    if (!job.guildId) return this.#directMessage(job);
     const installation = await store.installation(
       job.applicationId,
       job.guildId,
@@ -384,6 +384,288 @@ export class Worker {
     }
   }
 
+  /**
+   * The installation a person's direct messages go to (DC-203): a bot DM
+   * names no server, so it is the one server of this application where the
+   * person is linked, or the one they chose among several (a select, held
+   * with their question); none when they are linked nowhere.
+   */
+  async #directInstallation(
+    applicationId: string,
+    userId: string,
+  ): Promise<
+    | { installation: Installation; hostKey: string }
+    | { choose: Installation[] }
+    | undefined
+  > {
+    const { store, cipher } = this.deps;
+    const candidates: Installation[] = [];
+    for (const guildId of await store.linkedGuilds(applicationId, userId)) {
+      if ((await store.linked(applicationId, guildId, userId)) !== true)
+        continue;
+      const one = await store.installation(applicationId, guildId);
+      if (one && one.state !== "removed") candidates.push(one);
+    }
+    const chosen = await store.directChoice(applicationId, userId);
+    const one =
+      candidates.length === 1
+        ? candidates[0]
+        : candidates.find((each) => each.guildId === chosen);
+    if (one)
+      return {
+        hostKey: cipher.decrypt(
+          one.hostKey,
+          externalIdOf(one.applicationId, one.guildId),
+        ),
+        installation: one,
+      };
+    return candidates.length ? { choose: candidates } : undefined;
+  }
+
+  /** The select of the servers a person's direct messages may go to, holding their question. */
+  async #directChoiceBody(
+    userId: string,
+    choose: readonly Installation[],
+    held: Readonly<{ prompt: string; messageId?: string }>,
+  ): Promise<MessageBody> {
+    const renderId = newRenderId();
+    const first = choose[0]!;
+    await this.deps.store.saveComponent({
+      applicationId: first.applicationId,
+      guildId: first.guildId,
+      kind: "direct",
+      ownerId: userId,
+      payload: {
+        guilds: choose.map((one) => one.guildId),
+        prompt: held.prompt,
+        ...(held.messageId ? { messageId: held.messageId } : {}),
+      },
+      renderId,
+    });
+    const options = [];
+    for (const one of choose.slice(0, 25))
+      options.push({
+        label: (await this.deps.port.guildName(one.guildId)).slice(0, 100),
+        value: one.guildId,
+      });
+    return {
+      allowed_mentions: NO_MENTIONS,
+      components: [
+        {
+          components: [
+            {
+              custom_id: `dc:direct:${renderId}`,
+              options,
+              placeholder: "Choose the server",
+              type: 3,
+            },
+          ],
+          type: 1,
+        },
+      ],
+      content:
+        "You are linked in several servers. Which one's Datalayer application answers your direct messages? Your question is answered once you choose.",
+    };
+  }
+
+  /** The direct-message key: the DM channel, no server. */
+  #directKey(applicationId: string, channelId: string): ThreadKey {
+    return {
+      applicationId,
+      channelId,
+      guildId: DIRECT,
+      thread: channelId,
+    };
+  }
+
+  /**
+   * A direct message to the bot (DC-203): a private session of the person
+   * with the installation their DMs go to, posted as the bot in the DM, under
+   * ⏳; place `direct`, so an application kept to direct messages answers
+   * here and nowhere else.
+   */
+  async #directMessage(job: MessageJob): Promise<void> {
+    const { port, store } = this.deps;
+    const reply = async (text: string) => {
+      if (!(await store.claimEvent(`message-said:${job.id}`))) return;
+      await port.createMessage(job.channelId, {
+        allowed_mentions: NO_MENTIONS,
+        content: text,
+        message_reference: { fail_if_not_exists: false, message_id: job.id },
+      });
+    };
+    const prompt = job.content.trim();
+    if (!prompt) return void (await reply(WORDS.writeQuestion));
+    const found = await this.#directInstallation(
+      job.applicationId,
+      job.authorId,
+    );
+    if (!found) return void (await reply(WORDS.directNotLinked));
+    if ("choose" in found) {
+      if (!(await store.claimEvent(`message-said:${job.id}`))) return;
+      await port.createMessage(
+        job.channelId,
+        await this.#directChoiceBody(job.authorId, found.choose, {
+          messageId: job.id,
+          prompt,
+        }),
+      );
+      return;
+    }
+    await this.#directTurn(
+      {
+        appPermissions: found.installation.permissions,
+        asBot: true,
+        command: { name: "ask", options: { question: prompt } },
+        ephemeral: false,
+        id: job.id,
+        key: this.#directKey(job.applicationId, job.channelId),
+        kind: "interaction",
+        receivedAt: job.receivedAt,
+        replyTo: { channelId: job.channelId, messageId: job.id },
+        threadFromOriginal: false,
+        token: this.deps.cipher.encrypt("", job.id),
+        type: 0,
+        userId: job.authorId,
+        userName: job.authorName,
+      },
+      "",
+      found.installation,
+      found.hostKey,
+      job.id,
+    );
+  }
+
+  /** A turn in a DM, under ⏳ on the message it answers (when one). */
+  async #directTurn(
+    job: InteractionJob,
+    token: string,
+    installation: Installation,
+    hostKey: string,
+    messageId?: string,
+  ): Promise<void> {
+    const { port, logger } = this.deps;
+    const channelId = job.key.channelId;
+    if (messageId)
+      await port
+        .addReaction(channelId, messageId, WAITING)
+        .catch((error: unknown) =>
+          logger.warn("reaction.not_added", { error }),
+        );
+    try {
+      await this.#ask(job, token, installation, hostKey);
+    } finally {
+      if (messageId)
+        await port
+          .removeReaction(channelId, messageId, WAITING)
+          .catch((error: unknown) =>
+            logger.warn("reaction.not_removed", { error }),
+          );
+    }
+  }
+
+  /**
+   * An interaction in the bot's DM: a press finds its installation through
+   * its row; `/ask` goes to the installation the person's DMs go to;
+   * anything else is for a server.
+   */
+  async #directInteraction(job: InteractionJob, token: string): Promise<void> {
+    const { store, cipher } = this.deps;
+    const say = (text: string) => this.#privately(job, token, text);
+    if (job.component) {
+      const row = await store.component(job.component.renderId);
+      const installation = row
+        ? await store.installation(row.applicationId, row.guildId)
+        : undefined;
+      if (!row || !installation || installation.state === "removed") {
+        await this.deps.port.followUp(
+          token,
+          privately("This button no longer does anything."),
+        );
+        return;
+      }
+      const hostKey = cipher.decrypt(
+        installation.hostKey,
+        externalIdOf(installation.applicationId, installation.guildId),
+      );
+      return this.#component(job, token, installation, hostKey);
+    }
+    if (job.command?.name !== "ask") return say(WORDS.directLater);
+    const found = await this.#directInstallation(
+      job.key.applicationId,
+      job.userId,
+    );
+    if (!found) return say(WORDS.directNotLinked);
+    if ("choose" in found) {
+      await this.deps.port.editOriginal(
+        token,
+        await this.#directChoiceBody(job.userId, found.choose, {
+          prompt: String(job.command.options.question ?? ""),
+        }),
+      );
+      return;
+    }
+    return this.#ask(job, token, found.installation, found.hostKey);
+  }
+
+  /**
+   * The server chosen for a person's DMs (DC-203): theirs only, once; kept,
+   * then the question it held is answered there.
+   */
+  async #chooseDirect(
+    job: InteractionJob,
+    token: string,
+    row: ComponentRow,
+  ): Promise<void> {
+    const { store, port, cipher } = this.deps;
+    const say = (text: string) => port.followUp(token, privately(text));
+    if (row.ownerId !== job.userId) return void (await say(WORDS.notYours));
+    const listed: unknown = row.payload.guilds;
+    const guilds = Array.isArray(listed)
+      ? (listed as unknown[]).filter(
+          (one): one is string => typeof one === "string",
+        )
+      : [];
+    const chosen = job.values?.[0];
+    if (!chosen || !guilds.includes(chosen))
+      return void (await say("Choose one of the servers offered."));
+    const installation = await store.installation(row.applicationId, chosen);
+    if (!installation || installation.state === "removed")
+      return void (await say(WORDS.removed));
+    if (!(await store.answerComponent(row.renderId, job.userId)))
+      return void (await say(WORDS.alreadyAnswered));
+    await store.setDirectChoice(row.applicationId, job.userId, chosen);
+    await port.editOriginal(token, {
+      allowed_mentions: NO_MENTIONS,
+      components: [],
+      content: `Your direct messages go to ${await port.guildName(chosen)}'s Datalayer application now.`,
+    });
+    const prompt = row.payload.prompt;
+    const messageId = row.payload.messageId;
+    if (typeof prompt !== "string" || !prompt.trim()) return;
+    const hostKey = cipher.decrypt(
+      installation.hostKey,
+      externalIdOf(installation.applicationId, installation.guildId),
+    );
+    return this.#directTurn(
+      {
+        ...job,
+        asBot: true,
+        command: { name: "ask", options: { question: prompt } },
+        ephemeral: false,
+        key: this.#directKey(row.applicationId, job.key.channelId),
+        threadFromOriginal: false,
+        ...(typeof messageId === "string"
+          ? { replyTo: { channelId: job.key.channelId, messageId } }
+          : {}),
+      },
+      token,
+      installation,
+      hostKey,
+      typeof messageId === "string" ? messageId : undefined,
+    );
+  }
+
   /** An answer only the person sees, whatever the deferral was. */
   async #privately(
     job: InteractionJob,
@@ -491,7 +773,11 @@ export class Worker {
       explicit !== binding.deploymentUid
     )
       return say(WORDS.switchExplicitly);
-    const allowances = await store.allowances(key.applicationId, key.guildId);
+    // The installation's: a direct message's key names no server.
+    const allowances = await store.allowances(
+      installation.applicationId,
+      installation.guildId,
+    );
     const place = placeOf(key);
     const resolution = await resolveApplication({
       allowances,
@@ -508,7 +794,7 @@ export class Worker {
       explicit,
       next: async () => binding?.nextDeploymentUid,
       threadApplication: binding?.deploymentUid,
-      visibility: "channel",
+      visibility: isDirect(key) ? "direct" : "channel",
     });
     if (!resolution.ok) return say(refusalWords(resolution.refusal));
 
@@ -535,6 +821,7 @@ export class Worker {
       await this.#turn(job, token, {
         applicationId: resolution.applicationId,
         binding,
+        guildId: installation.guildId,
         key,
         messageId,
         owner,
@@ -569,7 +856,10 @@ export class Worker {
         quotaEntries(this.deps.limits, {
           applicationId: resolution.applicationId,
           externalUserId: job.userId,
-          installation: externalIdOf(key.applicationId, key.guildId),
+          installation: externalIdOf(
+            installation.applicationId,
+            installation.guildId,
+          ),
           organizationId: installation.organizationUid,
         }),
         windowOf(now),
@@ -596,6 +886,8 @@ export class Worker {
     turn: Readonly<{
       applicationId: string;
       binding?: ThreadBinding;
+      /** The installation's server (a direct message's key names none). */
+      guildId: string;
       key: ThreadKey;
       messageId: string;
       owner: string;
@@ -612,7 +904,10 @@ export class Worker {
     // Inside an existing thread, unless the key names the `@original` a
     // thread would start from (a private *Ask Datalayer* asked in a thread
     // has its own session there, never the thread's).
-    const inThread = Boolean(turn.key.parentId) && !job.threadFromOriginal;
+    // A direct message's channel is its conversation, as a thread is.
+    const inThread =
+      (Boolean(turn.key.parentId) && !job.threadFromOriginal) ||
+      isDirect(turn.key);
     const request = {
       applicationId: turn.applicationId,
       externalEventId: `discord:${job.id}`,
@@ -640,7 +935,7 @@ export class Worker {
         [401, 403, 404].includes(error.status)
       ) {
         logger.audit("identity.refused", {
-          installation: externalIdOf(turn.key.applicationId, turn.key.guildId),
+          installation: externalIdOf(turn.key.applicationId, turn.guildId),
           reason: String(error.status),
           user: job.userId,
         });
@@ -654,7 +949,7 @@ export class Worker {
       channelId: turn.key.parentId ?? turn.key.channelId,
       deploymentUid: turn.applicationId,
       generation,
-      guildId: turn.key.guildId,
+      guildId: turn.guildId,
       openedBy: turn.binding?.openedBy ?? job.userId,
       sessionUid: stream.sessionId,
       threadExists: inThread,
@@ -669,7 +964,7 @@ export class Worker {
     const stopId = newRenderId();
     await store.saveComponent({
       applicationId: turn.key.applicationId,
-      guildId: turn.key.guildId,
+      guildId: turn.guildId,
       kind: "stop",
       ownerId: job.userId,
       payload: {
@@ -832,7 +1127,7 @@ export class Worker {
     const openId = newRenderId();
     await store.saveComponent({
       applicationId: turn.key.applicationId,
-      guildId: turn.key.guildId,
+      guildId: turn.guildId,
       kind: "open",
       ownerId: job.userId,
       payload: {
@@ -857,7 +1152,7 @@ export class Worker {
       postId = newRenderId();
       await store.saveComponent({
         applicationId: turn.key.applicationId,
-        guildId: turn.key.guildId,
+        guildId: turn.guildId,
         kind: "post",
         ownerId: job.userId,
         payload: {
@@ -887,7 +1182,7 @@ export class Worker {
       const askingId = newRenderId();
       await store.saveComponent({
         applicationId: turn.key.applicationId,
-        guildId: turn.key.guildId,
+        guildId: turn.guildId,
         kind: "asking",
         ownerId: job.userId,
         payload: { sessionUid: sessionId, threadKey: turn.threadKey },
@@ -898,7 +1193,7 @@ export class Worker {
         const choiceId = newRenderId();
         await store.saveComponent({
           applicationId: turn.key.applicationId,
-          guildId: turn.key.guildId,
+          guildId: turn.guildId,
           kind: "answer",
           ownerId: job.userId,
           payload: {
@@ -1947,6 +2242,7 @@ export class Worker {
     if (component.kind === "open") return this.#open(job, token, row);
     if (component.kind === "post")
       return this.#post(job, token, installation, hostKey, row);
+    if (component.kind === "direct") return this.#chooseDirect(job, token, row);
     if (component.kind === "show")
       return this.#show(job, token, installation, hostKey, row);
     if (component.kind === "app") {

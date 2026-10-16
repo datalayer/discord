@@ -175,6 +175,10 @@ export class FakePort implements DiscordPort {
     this.#record("startThread", [channelId, messageId, name]);
     return { id: messageId };
   }
+  async guildName(guildId: string): Promise<string> {
+    this.#record("guildName", [guildId]);
+    return `Server ${guildId.slice(-3)}`;
+  }
   /** The channels the bot can read: a text channel unless set. */
   readonly channels = new Map<string, ChannelView>();
   async channel(channelId: string): Promise<ChannelView> {

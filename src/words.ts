@@ -13,7 +13,10 @@ export const WORDS = {
   notLinked:
     "Link your Datalayer account first: run `/datalayer link`, sign in to Datalayer and confirm. Then ask again.",
   directLater:
-    "Direct messages to @Datalayer come later. Use `/ask` in a server where @Datalayer is added.",
+    "Run this in a server where @Datalayer is added. Here, write your question, or use `/ask`.",
+  directNotLinked:
+    "Link your Datalayer account in a server where @Datalayer is added first: run `/datalayer link` there, then write to @Datalayer here.",
+  writeQuestion: "Write your question as text.",
   busy: "A turn is already running in this thread. Press Stop on it, or wait for it to finish.",
   switchExplicitly:
     "This thread runs another application. Run `/datalayer app` to switch, which starts a new session here.",

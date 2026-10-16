@@ -77,6 +77,8 @@ export interface DiscordPort {
     messageId: string,
     name: string,
   ): Promise<{ id: string }>;
+  /** A server's name, as the bot sees it (the direct-message choice, DC-203). */
+  guildName(guildId: string): Promise<string>;
   /** A channel's type and parent (a mention's place, DC-202). */
   channel(channelId: string): Promise<ChannelView>;
   /** The bot's own reaction on a message (⏳ while it answers). */
@@ -222,6 +224,16 @@ export class HttpDiscordPort implements DiscordPort {
       `channel:${channelId}:threads`,
       { body: { auto_archive_duration: 1440, name }, bot: true },
     );
+  }
+
+  async guildName(guildId: string) {
+    const guild = await this.#call<{ name?: string }>(
+      "GET",
+      `/guilds/${guildId}`,
+      `guild:${guildId}`,
+      { bot: true },
+    );
+    return guild.name ?? guildId;
   }
 
   async channel(channelId: string) {

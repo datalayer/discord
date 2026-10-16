@@ -130,11 +130,14 @@ export class DeliveryHandler {
     delivery: HostDelivery,
   ): Promise<void> {
     const target = targetSchema.safeParse(delivery.payload.target);
-    // A target this service did not give, or another server's: nothing shown.
+    // A target this service did not give, or another server's: nothing
+    // shown. A direct message's names no server (`@me`): the delivery came
+    // with this installation's key, so its session is this installation's.
     if (
       !target.success ||
       target.data.applicationId !== installation.applicationId ||
-      target.data.guildId !== installation.guildId
+      (target.data.guildId !== installation.guildId &&
+        target.data.guildId !== DIRECT)
     ) {
       this.deps.logger.warn("delivery.foreign_target", {
         delivery: delivery.delivery,
@@ -267,7 +270,7 @@ export class DeliveryHandler {
       guildId: installation.guildId,
       ownerId: target.userId,
     };
-    if (installation.guildId === DIRECT) {
+    if (target.guildId === DIRECT) {
       // A DM: the card itself, to the only person who reads there.
       const person = this.#person(
         installation,

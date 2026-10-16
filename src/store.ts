@@ -85,6 +85,16 @@ export interface DiscordStore extends DeliveryClaimStore {
     state: InstallationState,
     at: Date,
   ): Promise<boolean>;
+  /** The server a person's direct messages go to, as they chose (DC-203). */
+  directChoice(
+    applicationId: string,
+    userId: string,
+  ): Promise<string | undefined>;
+  setDirectChoice(
+    applicationId: string,
+    userId: string,
+    guildId: string,
+  ): Promise<void>;
   /** The gateway session a stopping leader left (DC-201), if any. */
   gatewaySession(applicationId: string): Promise<GatewaySession | undefined>;
   /** Keep it for the next leader, or clear it (`undefined`). */
@@ -256,6 +266,19 @@ export class MemoryStore implements DiscordStore {
   }
 
   readonly #gatewaySessions = new Map<string, GatewaySession>();
+  readonly #directChoices = new Map<string, string>();
+
+  async directChoice(applicationId: string, userId: string) {
+    return this.#directChoices.get(`${applicationId}:${userId}`);
+  }
+
+  async setDirectChoice(
+    applicationId: string,
+    userId: string,
+    guildId: string,
+  ) {
+    this.#directChoices.set(`${applicationId}:${userId}`, guildId);
+  }
 
   async gatewaySession(applicationId: string) {
     return this.#gatewaySessions.get(applicationId);
@@ -301,6 +324,9 @@ export class MemoryStore implements DiscordStore {
       if (one.applicationId === applicationId && one.guildId === guildId)
         this.#components.delete(key);
     this.#allowances.delete(`${applicationId}:${guildId}`);
+    for (const [key, chosen] of [...this.#directChoices])
+      if (key.startsWith(`${applicationId}:`) && chosen === guildId)
+        this.#directChoices.delete(key);
   }
 
   async linked(applicationId: string, guildId: string, userId: string) {
@@ -327,6 +353,7 @@ export class MemoryStore implements DiscordStore {
 
   async forgetUser(applicationId: string, userId: string) {
     let count = 0;
+    if (this.#directChoices.delete(`${applicationId}:${userId}`)) count += 1;
     for (const key of [...this.#links.keys()])
       if (key.startsWith(`${applicationId}:`) && key.endsWith(`:${userId}`)) {
         this.#links.delete(key);
