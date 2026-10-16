@@ -19,12 +19,7 @@ import {
 } from "./discord-port.js";
 import { DIRECT, externalIdOf, threadIdOf } from "./domain.js";
 import { newRenderId } from "./interactions.js";
-import {
-  OPEN_LABEL,
-  routine,
-  secretBearing,
-  type NotificationMode,
-} from "./render.js";
+import { OPEN_LABEL, routine, secretBearing } from "./render.js";
 import type { DiscordStore, Installation } from "./store.js";
 import { WORDS } from "./words.js";
 
@@ -108,8 +103,6 @@ export type DeliveryDependencies = Readonly<{
   hosts: Pick<DatalayerHostClient, "acknowledge">;
   asPerson: AsPerson;
   logger: Logger;
-  /** How routine posts sound (DC-307): quiet until a server setting says otherwise. */
-  mode?: NotificationMode;
   /** A server Discord says is unknown: removed. */
   removed?: (guildId: string) => Promise<unknown>;
 }>;
@@ -384,7 +377,8 @@ export class DeliveryHandler {
       text === undefined || secretBearing(text)
         ? WORDS.finishedInDatalayer
         : text || WORDS.endedEarly;
-    const bodies = routine(content, this.deps.mode ?? "quiet");
+    // Quiet or noisy: the server's own choice (DC-307).
+    const bodies = routine(content, installation.notifications);
     const last = bodies.length - 1;
     for (const [at, body] of bodies.entries())
       if (

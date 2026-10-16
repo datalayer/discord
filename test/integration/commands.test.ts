@@ -342,3 +342,81 @@ describe("/datalayer-admin (DC-106)", () => {
     );
   });
 });
+
+describe("/datalayer-admin notifications (DC-307)", () => {
+  let h: Harness;
+  beforeEach(async () => {
+    h = harness();
+    await connected(h);
+    h.hosts.links.set(BOB, "principal-bob");
+  });
+
+  it("sets quiet or noisy for the server, for the member linked as the connection's owner only", async () => {
+    expect(
+      (await h.store.installation(APPLICATION, GUILD))?.notifications,
+    ).toBe("quiet");
+    // Linked, but not as the installation's account: refused.
+    await h.worker.handle(
+      command(
+        h,
+        "datalayer-admin",
+        "notifications",
+        { userId: BOB },
+        {
+          mode: "noisy",
+        },
+      ),
+    );
+    expect(told(h)).toBe(WORDS.notOwner);
+    await h.worker.handle(
+      command(
+        h,
+        "datalayer-admin",
+        "notifications",
+        { id: id(920) },
+        {
+          mode: "noisy",
+        },
+      ),
+    );
+    expect(told(h)).toBe(WORDS.notOwner);
+    expect(
+      (await h.store.installation(APPLICATION, GUILD))?.notifications,
+    ).toBe("quiet");
+
+    // Alice linked as the account the server is bound to: its owner.
+    h.hosts.links.set(ALICE, h.hosts.self.accountUid);
+    await h.worker.handle(
+      command(
+        h,
+        "datalayer-admin",
+        "notifications",
+        { id: id(921) },
+        {
+          mode: "noisy",
+        },
+      ),
+    );
+    expect(told(h)).toContain("notify as any message does");
+    expect(
+      (await h.store.installation(APPLICATION, GUILD))?.notifications,
+    ).toBe("noisy");
+    await h.worker.handle(
+      command(
+        h,
+        "datalayer-admin",
+        "notifications",
+        { id: id(922) },
+        {
+          mode: "quiet",
+        },
+      ),
+    );
+    expect(told(h)).toContain("notify no one");
+    expect(
+      (await h.store.installation(APPLICATION, GUILD))?.notifications,
+    ).toBe("quiet");
+    // Nothing of it goes to Datalayer's admin route.
+    expect(h.hosts.changes).toEqual([]);
+  });
+});

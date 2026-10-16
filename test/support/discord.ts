@@ -401,6 +401,7 @@ export function installation(
     hostUid: `host-${guildId}`,
     installedBy: "account-1",
     organizationUid: "account-1",
+    notifications: "quiet",
     permissions: "309237763136",
     state: "active",
     ...overrides,

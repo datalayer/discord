@@ -308,6 +308,41 @@ describe("deliveries in Discord (DC-301)", () => {
     expect(h.port.count("createMessage")).toBe(1);
   });
 
+  it("posts a later answer as the server chose: silently when quiet, as any message when noisy, never parsing a mention; only the approval line names its owner", async () => {
+    const unshown = async (session: string) =>
+      h.store.saveThread({
+        applicationId: APPLICATION,
+        channelId: CHANNEL,
+        deploymentUid: "deployment-1",
+        generation: 0,
+        guildId: GUILD,
+        openedBy: ALICE,
+        sessionUid: session,
+        threadKey: threadIdOf(KEY),
+        unshownSessionUid: session,
+      });
+    h.asPerson.answers.set("s-quiet", "Quiet @everyone answer.");
+    h.asPerson.answers.set("s-noisy", "Noisy answer.");
+    await unshown("s-quiet");
+    await h.worker.handle(job(completed("s-quiet")));
+    expect(await h.store.setNotifications(APPLICATION, GUILD, "noisy")).toBe(
+      true,
+    );
+    await unshown("s-noisy");
+    await h.worker.handle(job(completed("s-noisy")));
+    await h.worker.handle(job(requested("ap-9")));
+    const bodies = h.port.bodies("createMessage");
+    expect(bodies).toHaveLength(3);
+    expect(bodies[0]).toMatchObject({ flags: SUPPRESS_NOTIFICATIONS });
+    expect(bodies[0]?.content).not.toContain("@everyone");
+    expect(bodies[1]?.content).toBe("Noisy answer.");
+    expect(bodies[1]?.flags).toBeUndefined();
+    // The decision notice: its owner alone, in `users`, nothing parsed.
+    expect(bodies[2]?.allowed_mentions).toEqual({ parse: [], users: [ALICE] });
+    for (const body of bodies.slice(0, 2))
+      expect(body.allowed_mentions).toEqual(NO_MENTIONS);
+  });
+
   it("never shows a finished answer holding a credential, nor a turn shown as it streamed", async () => {
     // Shown as it streamed: no mark, nothing delivered.
     await h.worker.handle(job(completed()));

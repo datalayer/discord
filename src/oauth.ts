@@ -222,6 +222,11 @@ export function oauthRoutes(dependencies: OAuthDependencies) {
       } catch (error) {
         dependencies.logger.warn("install.delivery_not_registered", { error });
       }
+      // A reinstall keeps the owner's quiet or noisy; a new install is quiet.
+      const before = await dependencies.store.installation(
+        dependencies.applicationId,
+        guild.id,
+      );
       await dependencies.store.saveInstallation({
         applicationId: dependencies.applicationId,
         guildId: guild.id,
@@ -231,6 +236,8 @@ export function oauthRoutes(dependencies: OAuthDependencies) {
         organizationUid: self.accountUid,
         permissions: authorization.permissions ?? permissionsInteger(),
         state: "active",
+        notifications:
+          before && before.state !== "removed" ? before.notifications : "quiet",
         ...(deliverySecret ? { deliverySecret } : {}),
       });
     } catch (error) {

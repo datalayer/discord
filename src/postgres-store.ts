@@ -3,6 +3,7 @@ import type {
   Queryable,
 } from "@datalayer/agent-runtimes/lib/portable/hosts";
 
+import type { NotificationMode } from "./render.js";
 import type {
   Allowance,
   ComponentRow,
@@ -24,6 +25,7 @@ type InstallationRow = {
   installed_by: string;
   permissions: string;
   state: InstallationState;
+  notifications: NotificationMode;
   delivery_secret: EncryptedSecret | null;
   removed_at: Date | null;
 };
@@ -37,6 +39,7 @@ const installationOf = (row: InstallationRow): Installation => ({
   organizationUid: row.datalayer_organization_uid,
   permissions: row.permissions,
   state: row.state,
+  notifications: row.notifications,
   ...(row.delivery_secret ? { deliverySecret: row.delivery_secret } : {}),
   ...(row.removed_at ? { removedAt: row.removed_at } : {}),
 });
@@ -95,8 +98,8 @@ export class PostgresStore implements DiscordStore {
       `INSERT INTO discord_installation
          (application_id, guild_id, datalayer_host_uid, datalayer_host_key,
           datalayer_organization_uid, installed_by, permissions, state,
-          delivery_secret, removed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          delivery_secret, removed_at, notifications)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (application_id, guild_id) DO UPDATE SET
          datalayer_host_uid = EXCLUDED.datalayer_host_uid,
          datalayer_host_key = EXCLUDED.datalayer_host_key,
@@ -106,6 +109,7 @@ export class PostgresStore implements DiscordStore {
          state = EXCLUDED.state,
          delivery_secret = EXCLUDED.delivery_secret,
          removed_at = EXCLUDED.removed_at,
+         notifications = EXCLUDED.notifications,
          updated_at = now()`,
       [
         one.applicationId,
@@ -118,8 +122,22 @@ export class PostgresStore implements DiscordStore {
         one.state,
         one.deliverySecret ?? null,
         one.removedAt ?? null,
+        one.notifications,
       ],
     );
+  }
+
+  async setNotifications(
+    applicationId: string,
+    guildId: string,
+    mode: NotificationMode,
+  ) {
+    const { rowCount } = await this.database.query(
+      `UPDATE discord_installation SET notifications = $3, updated_at = now()
+       WHERE application_id = $1 AND guild_id = $2 AND state <> 'removed'`,
+      [applicationId, guildId, mode],
+    );
+    return rowCount === 1;
   }
 
   async setInstallationState(

@@ -4,6 +4,8 @@ import type {
   EncryptedSecret,
 } from "@datalayer/agent-runtimes/lib/portable/hosts";
 
+import type { NotificationMode } from "./render.js";
+
 /**
  * What the service keeps: installations, link status,
  * thread bindings, the running turn's claim, components, the allowance cache
@@ -24,6 +26,8 @@ export type Installation = Readonly<{
   installedBy: string;
   permissions: string;
   state: InstallationState;
+  /** How the server hears routine posts (DC-307): an owner's choice, quiet at install. */
+  notifications: NotificationMode;
   deliverySecret?: EncryptedSecret;
   removedAt?: Date;
 }>;
@@ -77,6 +81,12 @@ export interface DiscordStore extends DeliveryClaimStore {
     guildId: string,
     state: InstallationState,
     at: Date,
+  ): Promise<boolean>;
+  /** An owner's quiet or noisy (DC-307); false when no live installation. */
+  setNotifications(
+    applicationId: string,
+    guildId: string,
+    mode: NotificationMode,
   ): Promise<boolean>;
   installations(state?: InstallationState): Promise<Installation[]>;
   /** Every row of a removed installation, gone (24 hours after removal). */
@@ -232,6 +242,18 @@ export class MemoryStore implements DiscordStore {
       state,
       ...(state === "removed" ? { removedAt: at } : {}),
     });
+    return true;
+  }
+
+  async setNotifications(
+    applicationId: string,
+    guildId: string,
+    mode: NotificationMode,
+  ) {
+    const key = `${applicationId}:${guildId}`;
+    const one = this.#installations.get(key);
+    if (!one || one.state === "removed") return false;
+    this.#installations.set(key, { ...one, notifications: mode });
     return true;
   }
 

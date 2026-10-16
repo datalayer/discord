@@ -214,6 +214,31 @@ function contract(name: string, make: () => Promise<DiscordStore>) {
       );
     });
 
+    it("keeps a server's quiet or noisy, quiet at install, never on a removed server (DC-307)", async () => {
+      const store = await make();
+      const cipher = testCipher();
+      await store.saveInstallation(installation(cipher));
+      expect(
+        (await store.installation(APPLICATION, GUILD))?.notifications,
+      ).toBe("quiet");
+      expect(await store.setNotifications(APPLICATION, GUILD, "noisy")).toBe(
+        true,
+      );
+      expect(
+        (await store.installation(APPLICATION, GUILD))?.notifications,
+      ).toBe("noisy");
+      expect(await store.setNotifications(APPLICATION, id(9), "noisy")).toBe(
+        false,
+      );
+      await store.setInstallationState(APPLICATION, GUILD, "removed", now);
+      expect(await store.setNotifications(APPLICATION, GUILD, "quiet")).toBe(
+        false,
+      );
+      expect(
+        (await store.installation(APPLICATION, GUILD))?.notifications,
+      ).toBe("noisy");
+    });
+
     it("marks a server removed once, never back to active by a state change, and purges every row of it", async () => {
       const store = await make();
       const cipher = testCipher();

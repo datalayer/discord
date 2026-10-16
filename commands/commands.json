@@ -102,6 +102,23 @@
             ]
           }
         ]
+      },
+      {
+        "name": "notifications",
+        "description": "Quiet or noisy: whether @Datalayer's later posts notify this server",
+        "type": 1,
+        "options": [
+          {
+            "name": "mode",
+            "description": "quiet: they notify no one; noisy: as any message",
+            "type": 3,
+            "required": true,
+            "choices": [
+              { "name": "quiet", "value": "quiet" },
+              { "name": "noisy", "value": "noisy" }
+            ]
+          }
+        ]
       }
     ]
   },

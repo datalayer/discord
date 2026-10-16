@@ -981,6 +981,8 @@ export class Worker {
   ): Promise<void> {
     const say = (text: string) => this.#privately(job, token, text);
     const sub = job.command?.subcommand;
+    if (sub === "notifications")
+      return this.#notifications(job, token, installation, hostKey);
     const place = placeOf(job.key);
     const state = job.command?.options.state;
     const change:
@@ -1033,6 +1035,53 @@ export class Worker {
           : change.channel?.state === "deny"
             ? "@Datalayer no longer answers in this channel or its threads."
             : "@Datalayer answers in this channel and its threads.",
+    );
+  }
+
+  /**
+   * `/datalayer-admin notifications quiet|noisy` (DC-307): how the server
+   * hears routine posts, kept on the installation. Only the owner of the
+   * connection, linked to it — ai-agents' rule for its admin route, read
+   * here through the link and the installation's account.
+   */
+  async #notifications(
+    job: InteractionJob,
+    token: string,
+    installation: Installation,
+    hostKey: string,
+  ): Promise<void> {
+    const say = (text: string) => this.#privately(job, token, text);
+    const mode = job.command?.options.mode;
+    if (mode !== "quiet" && mode !== "noisy")
+      return say("This command is not one @Datalayer knows.");
+    const external = externalIdOf(
+      installation.applicationId,
+      installation.guildId,
+    );
+    const link = await this.#linked(installation, hostKey, job.userId);
+    const self = await this.deps.hosts.self(hostKey);
+    if (!link.linked || link.principalUid !== self.accountUid) {
+      this.deps.logger.audit("identity.refused", {
+        installation: external,
+        reason: "admin",
+        user: job.userId,
+      });
+      return say(WORDS.notOwner);
+    }
+    await this.deps.store.setNotifications(
+      installation.applicationId,
+      installation.guildId,
+      mode,
+    );
+    this.deps.logger.audit("admin.changed", {
+      by: job.userId,
+      installation: external,
+      reason: `notifications:${mode}`,
+    });
+    return say(
+      mode === "quiet"
+        ? "@Datalayer's later posts in this server notify no one. A person a decision waits on is still notified."
+        : "@Datalayer's later posts in this server notify as any message does. It still pings no one but a person a decision waits on.",
     );
   }
 
