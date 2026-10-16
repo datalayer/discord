@@ -95,7 +95,7 @@ describe("components through the interaction handler (DC-207)", () => {
         method: "POST",
       });
       expect(response.status).toBe(200);
-      return (await response.json()) as unknown;
+      return response.json();
     };
   });
 
