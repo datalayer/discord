@@ -214,15 +214,27 @@ export function routine(
 }
 
 /**
+ * Text that is not ours, shown as text: Discord's Markdown characters
+ * escaped, mentions inert, so a value can neither format nor ping.
+ */
+export function escapeMarkdown(text: string): string {
+  return inertMentions(text).replace(/([\\*_~`|>#[\]()<:-])/g, "\\$1");
+}
+
+/**
  * The one message that pings (DC-307): a decision waits for its owner, who
  * alone is named in `allowed_mentions.users`; nothing parsed.
  */
-export function decisionNotice(ownerId: string, toolName: string): MessageBody {
+export function decisionNotice(
+  ownerId: string,
+  toolName: string,
+  appName = "",
+): MessageBody {
   if (!/^\d{17,20}$/.test(ownerId))
     throw new Error("A decision notice names a Discord user id.");
   return {
     allowed_mentions: { parse: [], users: [ownerId] },
-    content: `<@${ownerId}> a decision waits for you: ${inertMentions(toolName)}.`,
+    content: `<@${ownerId}> ${escapeMarkdown(appName || "Your application")} is waiting for your decision: ${escapeMarkdown(toolName)}.`,
   };
 }
 

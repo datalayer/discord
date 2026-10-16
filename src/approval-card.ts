@@ -5,11 +5,13 @@ import {
 } from "@datalayer/agent-runtimes/lib/portable/hosts";
 
 import type { MessageBody } from "./discord-port.js";
+
 import {
   CONTENT_LIMIT,
+  decisionNotice,
   EMBED_DESCRIPTION_LIMIT,
   EMBEDS_TOTAL_LIMIT,
-  inertMentions,
+  escapeMarkdown,
   NO_MENTIONS,
   OPEN_LABEL,
 } from "./render.js";
@@ -42,14 +44,6 @@ export const SHOW_LABEL = "Show the request";
 export const REVIEW_LABEL = "Review in Datalayer";
 export const APPROVE_LABEL = "Approve";
 export const REJECT_LABEL = "Reject";
-
-/**
- * Text that is not ours, shown as text: Discord's Markdown characters
- * escaped, mentions inert, so a value can neither format nor ping.
- */
-export function escapeMarkdown(text: string): string {
-  return inertMentions(text).replace(/([\\*_~`|>#[\]()<:-])/g, "\\$1");
-}
 
 /** What is shown of an action: the renderer's fields, else the presentation's, else its arguments. */
 export function shownFields(
@@ -201,17 +195,14 @@ export function waitingLine(
   toolName: string,
   showId: string,
 ): MessageBody {
-  if (!/^\d{17,20}$/.test(ownerId))
-    throw new Error("A waiting line names a Discord user id.");
   return {
-    allowed_mentions: { parse: [], users: [ownerId] },
+    ...decisionNotice(ownerId, toolName, appName),
     components: [
       {
         components: [button(`dc:show:${showId}`, SHOW_LABEL, 1)],
         type: 1,
       },
     ],
-    content: `<@${ownerId}> ${escapeMarkdown(appName || "Your application")} is waiting for your decision: ${escapeMarkdown(toolName)}.`,
   };
 }
 
