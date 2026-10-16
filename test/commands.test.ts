@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 import {
+  applicationDrift,
+  applicationSettingsFor,
   commandDrift,
   parseCommands,
   type CommandDefinition,
@@ -83,6 +85,156 @@ describe("the application commands (DC-007)", () => {
         ...registered.slice(1),
       ]),
     ).toEqual(["ask: registered differently"]);
+  });
+  it("reads an optional option Discord answers without `required` as `required: false` (/ask as registered on Datalayer Dev)", async () => {
+    const commands = await defined();
+    // GET /applications/{id}/commands, 16 October 2026: /ask's two optional
+    // options come back without `required`.
+    const ask = {
+      id: "1560672689478434926",
+      application_id: "1467061572630347817",
+      version: "1560672689478434930",
+      default_member_permissions: null,
+      type: 1,
+      name: "ask",
+      description: "Ask a Datalayer application",
+      dm_permission: true,
+      contexts: [0, 1],
+      integration_types: [0],
+      options: [
+        {
+          type: 3,
+          name: "question",
+          description: "What to ask",
+          required: true,
+          min_length: 1,
+          max_length: 6000,
+        },
+        {
+          type: 3,
+          name: "application",
+          description:
+            "The application that answers (default: this thread's or your default)",
+          autocomplete: true,
+        },
+        { type: 5, name: "private", description: "Answer only to you" },
+      ],
+      nsfw: false,
+    };
+    const rest = commands
+      .filter((one) => one.name !== "ask")
+      .map((one) => ({
+        ...one,
+        ...(one.type === 3 ? { description: "" } : {}),
+      }));
+    expect(commandDrift(commands, [ask, ...rest])).toEqual([]);
+    // A required option registered as optional is still drift.
+    const loose = {
+      ...ask,
+      options: ask.options.map((one) =>
+        Object.fromEntries(
+          Object.entries(one).filter(([key]) => key !== "required"),
+        ),
+      ),
+    };
+    expect(commandDrift(commands, [loose, ...rest])).toEqual([
+      "ask: registered differently",
+    ]);
+  });
+});
+
+describe("the application's settings (DC-007)", () => {
+  const definition = async (): Promise<unknown> =>
+    JSON.parse(
+      await readFile(
+        new URL("../commands/application.json", import.meta.url),
+        "utf8",
+      ),
+    );
+
+  it("fills the origin and the Public Bot switch, and refuses an origin with a path", async () => {
+    const dev = applicationSettingsFor(
+      await definition(),
+      "https://discord-dev.datalayer.run",
+      false,
+    );
+    expect(dev).toMatchObject({
+      interactions_endpoint_url:
+        "https://discord-dev.datalayer.run/discord/interactions",
+      event_webhooks_url: "https://discord-dev.datalayer.run/discord/events",
+      redirect_uris: [
+        "https://discord-dev.datalayer.run/discord/oauth/callback",
+      ],
+      custom_install_url: "https://discord-dev.datalayer.run/discord/install",
+      bot_public: false,
+      bot_require_code_grant: true,
+    });
+    expect(
+      applicationSettingsFor(
+        await definition(),
+        "https://discord.datalayer.run",
+        true,
+      ).bot_public,
+    ).toBe(true);
+    const value = await definition();
+    expect(() =>
+      applicationSettingsFor(
+        value,
+        "https://discord-dev.datalayer.run/x",
+        false,
+      ),
+    ).toThrow(/no path/);
+  });
+
+  it("names each setting Discord holds differently (Datalayer Dev's Bot page, 16 October 2026)", async () => {
+    const dev = applicationSettingsFor(
+      await definition(),
+      "https://discord-dev.datalayer.run",
+      false,
+    );
+    // GET /applications/@me, the fields the definition holds.
+    const live = {
+      id: "1467061572630347817",
+      name: "Datalayer DEV",
+      interactions_endpoint_url:
+        "https://discord-dev.datalayer.run/discord/interactions",
+      event_webhooks_url: "https://discord-dev.datalayer.run/discord/events",
+      event_webhooks_status: 2,
+      event_webhooks_types: ["APPLICATION_AUTHORIZED"],
+      redirect_uris: [
+        "https://discord-dev.datalayer.run/discord/oauth/callback",
+      ],
+      custom_install_url: "https://discord-dev.datalayer.run/discord/install",
+      install_params: null,
+      integration_types_config: { "0": {} },
+      terms_of_service_url: "https://datalayer.ai/terms",
+      privacy_policy_url: "https://datalayer.ai/privacy",
+      bot_public: true,
+      bot_require_code_grant: false,
+    };
+    expect(applicationDrift(dev, live)).toEqual([
+      "bot_public: true, defined false",
+      "bot_require_code_grant: false, defined true",
+    ]);
+    expect(
+      applicationDrift(dev, {
+        ...live,
+        bot_public: false,
+        bot_require_code_grant: true,
+      }),
+    ).toEqual([]);
+    expect(
+      applicationDrift(dev, {
+        ...live,
+        bot_public: false,
+        bot_require_code_grant: true,
+        event_webhooks_status: 1,
+        integration_types_config: { "0": {}, "1": {} },
+      }),
+    ).toEqual([
+      "event_webhooks_status: 1, defined 2",
+      'integration_types_config: {"0":{},"1":{}}, defined {"0":{}}',
+    ]);
   });
 });
 

@@ -1,0 +1,13 @@
+{
+  "interactions_endpoint_url": "{origin}/discord/interactions",
+  "event_webhooks_url": "{origin}/discord/events",
+  "event_webhooks_status": 2,
+  "event_webhooks_types": ["APPLICATION_AUTHORIZED"],
+  "redirect_uris": ["{origin}/discord/oauth/callback"],
+  "custom_install_url": "{origin}/discord/install",
+  "integration_types_config": { "0": {} },
+  "terms_of_service_url": "https://datalayer.ai/terms",
+  "privacy_policy_url": "https://datalayer.ai/privacy",
+  "bot_public": false,
+  "bot_require_code_grant": true
+}

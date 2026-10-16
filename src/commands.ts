@@ -106,13 +106,17 @@ export function commandDrift(
   defined: readonly CommandDefinition[],
   registered: readonly Record<string, unknown>[],
 ): string[] {
+  // Keys sorted; an option's `required: false` is the same as no `required`
+  // (Discord leaves it out of what it answers).
   const canonical = (value: unknown): string =>
     JSON.stringify(value, (_key, one: unknown) =>
       one && typeof one === "object" && !Array.isArray(one)
         ? Object.fromEntries(
-            Object.entries(one as Record<string, unknown>).sort(([a], [b]) =>
-              a.localeCompare(b),
-            ),
+            Object.entries(one as Record<string, unknown>)
+              .filter(
+                ([key, field]) => !(key === "required" && field === false),
+              )
+              .sort(([a], [b]) => a.localeCompare(b)),
           )
         : one,
     );
@@ -134,4 +138,61 @@ export function commandDrift(
   for (const key of live.keys())
     drift.push(`${key.split(":")[1]}: registered, not defined`);
   return drift;
+}
+
+/**
+ * The application's settings as `commands/application.json` defines them
+ * (`{origin}` is the service's public origin), and `GET /applications/@me`
+ * answers them: the endpoints, the event types, the install link, guild
+ * install only, the terms and privacy pages and the Bot page's two switches.
+ */
+export const applicationSchema = z
+  .object({
+    interactions_endpoint_url: z.string(),
+    event_webhooks_url: z.string(),
+    event_webhooks_status: z.literal(2),
+    event_webhooks_types: z.array(z.string()).min(1),
+    redirect_uris: z.array(z.string()).min(1),
+    custom_install_url: z.string(),
+    integration_types_config: z.record(z.string(), z.unknown()),
+    terms_of_service_url: z.url(),
+    privacy_policy_url: z.url(),
+    bot_public: z.boolean(),
+    bot_require_code_grant: z.boolean(),
+  })
+  .strict();
+
+export type ApplicationSettings = z.infer<typeof applicationSchema>;
+
+/** The definition for one application: `{origin}` replaced, and its Public Bot switch. */
+export function applicationSettingsFor(
+  value: unknown,
+  origin: string,
+  botPublic: boolean,
+): ApplicationSettings {
+  const url = new URL(origin);
+  if (url.protocol !== "https:" || url.pathname !== "/" || url.search)
+    throw new Error("The public origin is an https origin with no path.");
+  const filled = JSON.parse(
+    JSON.stringify(applicationSchema.parse(value)).replaceAll(
+      "{origin}",
+      url.origin,
+    ),
+  ) as unknown;
+  return { ...applicationSchema.parse(filled), bot_public: botPublic };
+}
+
+/** Each setting Discord holds differently from the definition, with both values (none is a secret). */
+export function applicationDrift(
+  defined: ApplicationSettings,
+  live: Record<string, unknown>,
+): string[] {
+  return Object.entries(defined)
+    .filter(
+      ([key, value]) => JSON.stringify(live[key]) !== JSON.stringify(value),
+    )
+    .map(
+      ([key, value]) =>
+        `${key}: ${JSON.stringify(live[key] ?? null)}, defined ${JSON.stringify(value)}`,
+    );
 }

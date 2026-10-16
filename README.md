@@ -154,7 +154,7 @@ npm run commands:register -- --guild <server id>       # development: one server
 npm run commands:check -- --guild <server id>          # what Discord has equals the file
 ```
 
-Server commands appear at once but not in direct messages. For the pilot, register globally (no `--guild`) and check with `npm run commands:check`. The script reads `DATALAYER_DISCORD_APPLICATION_ID` and `DATALAYER_DISCORD_BOT_TOKEN` and prints neither.
+Server commands appear at once but not in direct messages. For the pilot, register globally (no `--guild`) and check with `npm run commands:check -- --public-bot` (when its Public Bot is on). The check also compares the application's settings of step 8 with [`commands/application.json`](commands/application.json) (`{origin}` is `DATALAYER_DISCORD_APP_URL`) and names each one Discord holds differently, such as the Bot page's two switches. The script reads `DATALAYER_DISCORD_APPLICATION_ID`, `DATALAYER_DISCORD_BOT_TOKEN` and `DATALAYER_DISCORD_APP_URL` and prints neither secret.
 
 ### 10. Add @Datalayer to a server and try it
 
