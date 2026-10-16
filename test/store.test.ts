@@ -3,7 +3,13 @@ import { execFileSync } from "node:child_process";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import {
+  PostgresQuotaStore,
+  quotaEntries,
+} from "@datalayer/agent-runtimes/lib/portable/hosts";
+
 import { PostgresStore } from "../src/postgres-store.js";
+import { TABLE_PREFIX } from "../src/resources.js";
 import { MemoryStore, type DiscordStore } from "../src/store.js";
 import { harness } from "./support/worker.js";
 import {
@@ -165,6 +171,43 @@ describe.runIf(Boolean(DATABASE_URL))("on PostgreSQL", () => {
   contract("the PostgreSQL store", async () => {
     await truncate();
     return new PostgresStore(database);
+  });
+
+  it("takes three of eight concurrent quota takes when three are allowed, all quotas or none (DC-402)", async () => {
+    await database.query("TRUNCATE discord_usage");
+    const quotas = new PostgresQuotaStore(database, {
+      tablePrefix: TABLE_PREFIX,
+    });
+    const entries = quotaEntries(
+      { application: 100, installation: 100, organization: 3, user: 100 },
+      {
+        applicationId: "deployment-1",
+        externalUserId: ALICE,
+        installation: `${APPLICATION}:${GUILD}`,
+        organizationId: "account-1",
+      },
+    );
+    const takes = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        quotas.takeQuota(entries, "2026-10-16T12"),
+      ),
+    );
+    expect(takes.filter((one) => one.ok)).toHaveLength(3);
+    expect(
+      takes
+        .filter((one) => !one.ok)
+        .map((one) => (one.ok ? "" : one.entry.scope)),
+    ).toEqual(Array(5).fill("organization"));
+    expect(
+      await quotas.quotaUsed("organization:account-1", "2026-10-16T12"),
+    ).toBe(3);
+    // None of the refused takes counted against the others.
+    expect(
+      await quotas.quotaUsed(
+        `installation:${APPLICATION}:${GUILD}`,
+        "2026-10-16T12",
+      ),
+    ).toBe(3);
   });
 
   it("gives one turn for two concurrent copies of one /ask (DC-105)", async () => {
