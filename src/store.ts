@@ -38,6 +38,12 @@ export type ThreadBinding = Readonly<{
   deploymentUid?: string;
   nextDeploymentUid?: string;
   openedBy?: string;
+  /**
+   * The session whose answer the last turn did not show here (the worker
+   * stopped, or could not post): a `turn.completed` delivery finishes it
+   * (§3.8, DC-301). Cleared once the answer is shown.
+   */
+  unshownSessionUid?: string;
 }>;
 
 /** What claiming a thread's turn answered: held by this job, or by another. */
@@ -135,6 +141,12 @@ export interface DiscordStore extends DeliveryClaimStore {
   component(renderId: string): Promise<ComponentRow | undefined>;
   /** Answer a component once (§7.6): `false` when it was already answered. */
   answerComponent(renderId: string, by: string): Promise<boolean>;
+  /** An approval's rows in a server (its thread line, its card's buttons), oldest first. */
+  approvalComponents(
+    applicationId: string,
+    guildId: string,
+    approvalId: string,
+  ): Promise<ComponentRow[]>;
 
   allowances(applicationId: string, guildId: string): Promise<Allowance[]>;
   setAllowances(
@@ -376,6 +388,19 @@ export class MemoryStore implements DiscordStore {
     if (!row || row.answeredBy) return false;
     this.#components.set(renderId, { ...row, answeredBy: by });
     return true;
+  }
+
+  async approvalComponents(
+    applicationId: string,
+    guildId: string,
+    approvalId: string,
+  ) {
+    return [...this.#components.values()].filter(
+      (one) =>
+        one.applicationId === applicationId &&
+        one.guildId === guildId &&
+        one.payload.approvalId === approvalId,
+    );
   }
 
   async allowances(applicationId: string, guildId: string) {

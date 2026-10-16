@@ -105,6 +105,37 @@ describe("/discord/install and /discord/oauth/callback (DC-103)", () => {
     );
   });
 
+  it("registers where Datalayer pushes the server's deliveries, keeping their secret encrypted; refused, it binds and the outbox is read (DC-301)", async () => {
+    const first = await service();
+    const done = await first.get(
+      `/discord/oauth/callback?code=c&state=${await first.start()}&guild_id=${GUILD}`,
+    );
+    expect(done.status).toBe(200);
+    expect(first.hosts.webhooks).toEqual([
+      {
+        hostKey: "dlhk_test_1",
+        url: "https://discord.example.datalayer.run/datalayer/deliveries/host-1",
+      },
+    ]);
+    const kept = await first.store.installation(APPLICATION, GUILD);
+    expect(JSON.stringify(kept)).not.toContain("delivery-secret-for-tests");
+    expect(
+      first.cipher.decrypt(
+        kept!.deliverySecret!,
+        `delivery:${APPLICATION}:${GUILD}`,
+      ),
+    ).toBe("delivery-secret-for-tests");
+    const second = await service();
+    second.hosts.refuseWebhook = true;
+    const bound = await second.get(
+      `/discord/oauth/callback?code=c&state=${await second.start()}&guild_id=${GUILD}`,
+    );
+    expect(bound.status).toBe(200);
+    const plain = await second.store.installation(APPLICATION, GUILD);
+    expect(plain?.state).toBe("active");
+    expect(plain?.deliverySecret).toBeUndefined();
+  });
+
   it("refuses a replayed state, a forged state and a missing bind code, storing nothing", async () => {
     const { get, start, store, hosts } = await service();
     const state = await start();

@@ -27,6 +27,8 @@ export const WORDS = {
   privateAfterExpiry:
     "The answer holds something private and Discord no longer lets @Datalayer show it only to you. Open it in Datalayer.",
   endedEarly: "The run ended without an answer.",
+  finishedInDatalayer:
+    "@Datalayer finished this request. Its answer is shown in Datalayer only: open it there.",
   removed: "@Datalayer was removed from this server.",
   notOwner:
     "Only an owner of this server's Datalayer connection may do this, and only with Discord's Manage Server permission.",
@@ -36,9 +38,16 @@ export const WORDS = {
     "This opens the conversation of the person who asked. Ask with /ask to have one of your own.",
   openHere:
     "Open your conversation in Datalayer (this link works once, for you, for ten minutes):",
+  approvalChanged:
+    "This request is no longer the one shown, or it is decided in Datalayer only: review it in Datalayer.",
   notOpener:
     "Only the person who started this thread's session may start it over or switch its application.",
 } as const;
+
+/** Who decides an approval, named without a ping (every message parses no mention). */
+export function whoDecides(ownerId: string): string {
+  return `Only <@${ownerId}> decides this request: it waits on them.`;
+}
 
 /** A resolution refusal in Discord's words (§8). */
 export function refusalWords(refusal: ApplicationRefusal): string {

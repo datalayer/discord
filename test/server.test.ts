@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createResources } from "../src/resources.js";
-import { createHttpServer } from "../src/server.js";
+import { createHttpServer, routeOf, type Route } from "../src/server.js";
 import { readConfig } from "../src/config.js";
 import { ENVIRONMENT } from "./support/environment.js";
 
@@ -57,5 +57,32 @@ describe("health and readiness (DC-008)", () => {
     } finally {
       await resources.close();
     }
+  });
+});
+
+describe("routes with a parameter (DC-301)", () => {
+  it("matches one non-empty, plain segment after the prefix, and nothing else", () => {
+    const deliveries: Route = async () => {};
+    const routes = {
+      "GET /healthz-like": deliveries,
+      "POST /datalayer/deliveries/:hostUid": deliveries,
+    };
+    expect(routeOf(routes, "POST", "/datalayer/deliveries/host-1")).toEqual({
+      params: { hostUid: "host-1" },
+      route: deliveries,
+    });
+    expect(routeOf(routes, "GET", "/datalayer/deliveries/host-1")).toBe(
+      undefined,
+    );
+    expect(routeOf(routes, "POST", "/datalayer/deliveries/")).toBe(undefined);
+    expect(routeOf(routes, "POST", "/datalayer/deliveries/a/b")).toBe(
+      undefined,
+    );
+    expect(routeOf(routes, "POST", "/datalayer/deliveries/a%2Fb")).toBe(
+      undefined,
+    );
+    expect(routeOf(routes, "GET", "/healthz-like")).toEqual({
+      route: deliveries,
+    });
   });
 });

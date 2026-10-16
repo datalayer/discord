@@ -1,13 +1,18 @@
 import {
   DatalayerHostClient,
   DEFAULT_QUOTAS,
+  DELIVERY_ROUTE,
+  DeliveryPoller,
+  deliveryRoute,
   HostKeyCredentials,
   HttpAgentClient,
   Logger,
   systemClock,
 } from "@datalayer/agent-runtimes/lib/portable/hosts";
 
+import { httpAsPerson } from "./as-person.js";
 import { readConfig } from "./config.js";
+import { deliverySinkOf, type DeliveryQueueJob } from "./deliveries.js";
 import { HttpDiscordPort } from "./discord-port.js";
 import {
   discordShape,
@@ -79,6 +84,18 @@ const openLink = async (
   const host = await credentials.forTurn(request);
   return (await hosts.handoff(host.accessToken, kind, target)).path;
 };
+// Datalayer as one member: approvals, decisions, a session's answer (§3.6, §3.8).
+const asPerson = httpAsPerson(credentials, hosts);
+// Each delivery queued once by its uid; handled from the queue (DC-301).
+const enqueueDelivery = async (job: {
+  delivery: DeliveryQueueJob["delivery"];
+  hostUid: string;
+}): Promise<void> => {
+  await queue.enqueue(
+    { ...job, kind: "delivery" },
+    `delivery:${job.hostUid}:${job.delivery.delivery}`,
+  );
+};
 const removal = {
   applicationId: config.DISCORD_APPLICATION_ID,
   cipher,
@@ -120,6 +137,10 @@ const routes: Routes =
             store,
           }),
           [`GET ${INSTALL_PATH}`]: oauth.install,
+          [`POST ${DELIVERY_ROUTE}`]: deliveryRoute(
+            deliverySinkOf(store, cipher),
+            enqueueDelivery,
+          ),
         };
       })();
 
@@ -134,10 +155,12 @@ const server = createHttpServer(resources.checks, routes, (error) =>
 );
 
 const timers: NodeJS.Timeout[] = [];
+let stopPoller = (): void => {};
 if (role !== "ingress") {
   const worker = new Worker({
     agent,
     applicationId: config.DISCORD_APPLICATION_ID,
+    asPerson,
     cipher,
     clock: systemClock,
     hosts,
@@ -151,6 +174,18 @@ if (role !== "ingress") {
     webUrl: config.DATALAYER_WEB_URL,
   });
   queue.start((job) => worker.handle(job));
+  // The outbox: what a push missed, or every delivery when none is registered.
+  const poller = new DeliveryPoller(
+    deliverySinkOf(store, cipher),
+    hosts,
+    enqueueDelivery,
+    {
+      warn: (message: string) =>
+        logger.warn("delivery.outbox_unread", { message }),
+    },
+  );
+  poller.start(config.DATALAYER_DELIVERY_POLL_SECONDS);
+  stopPoller = () => poller.stop();
   const daily = async () => {
     try {
       const removed = await reconcile({ ...removal, port });
@@ -189,6 +224,7 @@ const close = async (): Promise<void> => {
   if (closing) return;
   closing = true;
   timers.forEach(clearInterval);
+  stopPoller();
   server.close();
   await resources.close();
   logger.info("service.stopped", { role });

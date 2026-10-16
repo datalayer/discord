@@ -12,6 +12,7 @@ import {
   APPLICATION,
   CHANNEL,
   FakeAgent,
+  FakeAsPerson,
   FakeClock,
   FakeHosts,
   FakePort,
@@ -33,6 +34,7 @@ export type Harness = Readonly<{
   port: FakePort;
   hosts: FakeHosts;
   agent: FakeAgent;
+  asPerson: FakeAsPerson;
   store: DiscordStore;
   cipher: SecretCipher;
   quotas: MemoryQuotaStore;
@@ -52,9 +54,11 @@ export function harness(
   const hosts = new FakeHosts();
   const agent = new FakeAgent(clock);
   const quotas = new MemoryQuotaStore();
+  const asPerson = new FakeAsPerson();
   const worker = new Worker({
     agent,
     applicationId: APPLICATION,
+    asPerson,
     cipher,
     clock,
     hosts: hosts.client,
@@ -69,6 +73,7 @@ export function harness(
   });
   return {
     agent,
+    asPerson,
     cipher,
     clock,
     hosts,
@@ -105,4 +110,60 @@ export function harness(
 export async function connected(h: Harness): Promise<void> {
   await h.store.saveInstallation(installation(h.cipher));
   h.hosts.links.set(ALICE, "principal-alice");
+}
+
+/**
+ * A press of a component in a thread, as the ingress persisted it: deferred
+ * privately (*Show the request*, *Open in Datalayer*), or, with `modal`, a
+ * confirmation's submit deferred as an update of the card.
+ */
+export function press(
+  h: Harness,
+  kind: "show" | "approve" | "reject" | "open",
+  renderId: string,
+  userId: string,
+  n: number,
+): InteractionJob {
+  const { command, ...job } = h.job({ n, userId });
+  void command;
+  return {
+    ...job,
+    component: { kind, renderId },
+    ephemeral: true,
+    key: {
+      ...job.key,
+      channelId: id(500),
+      parentId: CHANNEL,
+      thread: id(500),
+    },
+    threadFromOriginal: false,
+    type: 3,
+  };
+}
+
+/** A confirmation modal's submit (Approve or Reject), deferred as an update. */
+export function submit(
+  h: Harness,
+  approve: boolean,
+  renderId: string,
+  userId: string,
+  n: number,
+  note = "",
+): InteractionJob {
+  const { command, ...job } = h.job({ n, userId });
+  void command;
+  return {
+    ...job,
+    ephemeral: false,
+    fields: { note },
+    key: {
+      ...job.key,
+      channelId: id(500),
+      parentId: CHANNEL,
+      thread: id(500),
+    },
+    modal: `dc:confirm-${approve ? "approve" : "reject"}:${renderId}`,
+    threadFromOriginal: false,
+    type: 5,
+  };
 }

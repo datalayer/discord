@@ -1,6 +1,8 @@
 import {
+  DELIVERY_PATH,
   HostRefusedError,
   type DatalayerHostClient,
+  type EncryptedSecret,
   type Logger,
   type SecretCipher,
 } from "@datalayer/agent-runtimes/lib/portable/hosts";
@@ -39,7 +41,7 @@ export type OAuthDependencies = Readonly<{
   store: DiscordStore;
   cipher: SecretCipher;
   port: Pick<DiscordPort, "authorize">;
-  hosts: Pick<DatalayerHostClient, "bind" | "self">;
+  hosts: Pick<DatalayerHostClient, "bind" | "self" | "setWebhook">;
   logger: Logger;
   now?: () => number;
 }>;
@@ -204,6 +206,22 @@ export function oauthRoutes(dependencies: OAuthDependencies) {
         name: guild.name ?? "",
       });
       const self = await dependencies.hosts.self(bound.hostKey);
+      // Where Datalayer pushes this server's deliveries (DC-301), and the
+      // secret they are signed with, kept encrypted. Refused or unreachable,
+      // the worker reads the outbox instead.
+      let deliverySecret: EncryptedSecret | undefined;
+      try {
+        const { signingSecret } = await dependencies.hosts.setWebhook(
+          bound.hostKey,
+          `${dependencies.appUrl.replace(/\/+$/, "")}${DELIVERY_PATH}/${encodeURIComponent(bound.hostUid)}`,
+        );
+        deliverySecret = dependencies.cipher.encrypt(
+          signingSecret,
+          `delivery:${externalId}`,
+        );
+      } catch (error) {
+        dependencies.logger.warn("install.delivery_not_registered", { error });
+      }
       await dependencies.store.saveInstallation({
         applicationId: dependencies.applicationId,
         guildId: guild.id,
@@ -213,6 +231,7 @@ export function oauthRoutes(dependencies: OAuthDependencies) {
         organizationUid: self.accountUid,
         permissions: authorization.permissions ?? permissionsInteger(),
         state: "active",
+        ...(deliverySecret ? { deliverySecret } : {}),
       });
     } catch (error) {
       if (error instanceof HostRefusedError) {

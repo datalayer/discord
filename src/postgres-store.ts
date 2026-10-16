@@ -51,6 +51,7 @@ type ThreadRow = {
   deployment_uid: string | null;
   next_deployment_uid: string | null;
   opened_by: string | null;
+  unshown_session_uid: string | null;
 };
 
 const threadOf = (row: ThreadRow): ThreadBinding => ({
@@ -65,6 +66,9 @@ const threadOf = (row: ThreadRow): ThreadBinding => ({
     ? { nextDeploymentUid: row.next_deployment_uid }
     : {}),
   ...(row.opened_by ? { openedBy: row.opened_by } : {}),
+  ...(row.unshown_session_uid
+    ? { unshownSessionUid: row.unshown_session_uid }
+    : {}),
 });
 
 export class PostgresStore implements DiscordStore {
@@ -270,14 +274,16 @@ export class PostgresStore implements DiscordStore {
     await this.database.query(
       `INSERT INTO discord_thread_binding
          (thread_key, application_id, guild_id, channel_id, session_uid,
-          generation, deployment_uid, next_deployment_uid, opened_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          generation, deployment_uid, next_deployment_uid, opened_by,
+          unshown_session_uid)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (thread_key) DO UPDATE SET
          session_uid = EXCLUDED.session_uid,
          generation = EXCLUDED.generation,
          deployment_uid = EXCLUDED.deployment_uid,
          next_deployment_uid = EXCLUDED.next_deployment_uid,
          opened_by = EXCLUDED.opened_by,
+         unshown_session_uid = EXCLUDED.unshown_session_uid,
          updated_at = now()`,
       [
         binding.threadKey,
@@ -289,6 +295,7 @@ export class PostgresStore implements DiscordStore {
         binding.deploymentUid ?? null,
         binding.nextDeploymentUid ?? null,
         binding.openedBy ?? null,
+        binding.unshownSessionUid ?? null,
       ],
     );
   }
@@ -427,6 +434,36 @@ export class PostgresStore implements DiscordStore {
       [renderId, by],
     );
     return rowCount === 1;
+  }
+
+  async approvalComponents(
+    applicationId: string,
+    guildId: string,
+    approvalId: string,
+  ) {
+    const { rows } = await this.database.query<{
+      render_id: string;
+      kind: string;
+      application_id: string;
+      guild_id: string;
+      owner_id: string;
+      payload: Record<string, unknown>;
+      answered_by: string | null;
+    }>(
+      `SELECT * FROM discord_component
+       WHERE application_id = $1 AND guild_id = $2 AND payload->>'approvalId' = $3
+       ORDER BY created_at, render_id`,
+      [applicationId, guildId, approvalId],
+    );
+    return rows.map((row) => ({
+      applicationId: row.application_id,
+      guildId: row.guild_id,
+      kind: row.kind,
+      ownerId: row.owner_id,
+      payload: row.payload,
+      renderId: row.render_id,
+      ...(row.answered_by ? { answeredBy: row.answered_by } : {}),
+    }));
   }
 
   async allowances(applicationId: string, guildId: string) {

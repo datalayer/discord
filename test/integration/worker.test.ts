@@ -28,6 +28,7 @@ import {
   APPLICATION,
   BOB,
   CHANNEL,
+  FakeAsPerson,
   FakeClock,
   FakeHosts,
   GUILD,
@@ -788,6 +789,7 @@ function wired(answer: (method: string, url: string) => Response | undefined) {
   const worker = new Worker({
     agent,
     applicationId: APPLICATION,
+    asPerson: new FakeAsPerson(),
     cipher,
     clock,
     hosts: hosts.client,

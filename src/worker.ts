@@ -1,8 +1,8 @@
 import {
+  hostMayDecide,
   HostRefusedError,
   quotaEntries,
   quotaWords,
-  redact,
   resetOf,
   resolveApplication,
   TurnState,
@@ -20,6 +20,15 @@ import {
   type SessionBinder,
 } from "@datalayer/agent-runtimes/lib/portable/hosts";
 import { randomBytes } from "node:crypto";
+
+import { approvalCard, decidedBody, statusWords } from "./approval-card.js";
+import type { AsPerson, Person } from "./as-person.js";
+import {
+  DeliveryHandler,
+  finishApproval,
+  saveCardRows,
+  type DeliveryQueueJob,
+} from "./deliveries.js";
 
 import {
   DiscordError,
@@ -44,6 +53,7 @@ import {
   NO_MENTIONS,
   privately,
   progressBody,
+  secretBearing,
 } from "./render.js";
 import type {
   ComponentRow,
@@ -51,7 +61,7 @@ import type {
   Installation,
   ThreadBinding,
 } from "./store.js";
-import { refusalWords, WORDS } from "./words.js";
+import { refusalWords, whoDecides, WORDS } from "./words.js";
 
 /**
  * The worker (plans/DISCORD.md §7.5): what the ingress persisted, answered.
@@ -86,8 +96,13 @@ export type WorkerDependencies = Readonly<{
   cipher: SecretCipher;
   hosts: Pick<
     DatalayerHostClient,
-    "self" | "linkState" | "linkCode" | "unlink" | "admin"
+    "self" | "linkState" | "linkCode" | "unlink" | "admin" | "acknowledge"
   >;
+  /**
+   * Datalayer as one member (§3.6, §3.8): an approval read or decided, a
+   * session's last answer read, with that member's own host token.
+   */
+  asPerson: AsPerson;
   /** Runs turns, and maps a session again once its answer's thread exists (§3.2). */
   agent: AgentClient<DiscordTurn> & SessionBinder<DiscordTurn>;
   quotas: QuotaStore;
@@ -111,10 +126,7 @@ export type WorkerDependencies = Readonly<{
   removed?: (guildId: string) => Promise<unknown>;
 }>;
 
-/** Whether a text holds a credential-shaped value (the shared redaction's shapes). */
-export function secretBearing(text: string): boolean {
-  return redact(text) !== text;
-}
+export { secretBearing };
 
 /**
  * Everything of a turn that its messages can show (§2, 5): the answer, the
@@ -141,14 +153,27 @@ type Surface =
 
 export class Worker {
   readonly instance: string;
+  /** Datalayer's deliveries: approvals, decisions, finished turns (DC-301). */
+  readonly deliveries: DeliveryHandler;
 
   constructor(readonly deps: WorkerDependencies) {
     this.instance = deps.instance ?? randomBytes(6).toString("hex");
+    this.deliveries = new DeliveryHandler({
+      asPerson: deps.asPerson,
+      cipher: deps.cipher,
+      hosts: deps.hosts,
+      logger: deps.logger,
+      port: deps.port,
+      ...(deps.removed ? { removed: deps.removed } : {}),
+      store: deps.store,
+    });
   }
 
   async handle(job: Readonly<{ kind: string }>): Promise<void> {
     if (job.kind === "interaction")
       return this.interaction(job as InteractionJob);
+    if (job.kind === "delivery")
+      return this.deliveries.receive(job as DeliveryQueueJob);
     if (job.kind === "event") {
       await handleEvent(job as EventJob, {
         applicationId: this.deps.applicationId,
@@ -188,6 +213,8 @@ export class Worker {
         return await this.#datalayer(job, token, installation, hostKey);
       if (job.component)
         return await this.#component(job, token, installation, hostKey);
+      if (job.modal?.startsWith("dc:confirm-"))
+        return await this.#decide(job, token, installation, hostKey);
       if (job.command?.name === "datalayer-admin")
         return await this.#admin(job, token, installation, hostKey);
       return await say("This request is not one @Datalayer answers yet.");
@@ -212,10 +239,11 @@ export class Worker {
     job: InteractionJob,
     token: string,
     text: string,
+    ours = false,
   ): Promise<void> {
     if (job.ephemeral) {
       await this.deps.port.editOriginal(token, {
-        ...privately(text),
+        ...privately(text, ours),
         components: [],
       });
       return;
@@ -224,7 +252,7 @@ export class Worker {
     await this.deps.port.deleteOriginal(token).catch((error: unknown) => {
       if (!(error instanceof DiscordError && error.tokenGone)) throw error;
     });
-    await this.deps.port.followUp(token, privately(text));
+    await this.deps.port.followUp(token, privately(text, ours));
   }
 
   async #linked(
@@ -449,7 +477,7 @@ export class Worker {
       logger.error("turn.failed", { error, interaction: job.id });
       return this.#privately(job, token, WORDS.failed);
     }
-    await store.saveThread({
+    const bound: ThreadBinding = {
       applicationId: turn.key.applicationId,
       channelId: turn.key.parentId ?? turn.key.channelId,
       deploymentUid: turn.applicationId,
@@ -458,7 +486,10 @@ export class Worker {
       openedBy: turn.binding?.openedBy ?? job.userId,
       sessionUid: stream.sessionId,
       threadKey: turn.threadKey,
-    });
+    };
+    // Unshown until the answer is shown here: a `turn.completed` delivery
+    // finishes a turn the worker could not (§3.8, DC-301).
+    await store.saveThread({ ...bound, unshownSessionUid: stream.sessionId });
     await store.setTurnRun(turn.threadKey, turn.owner, stream.sessionId);
     const sessionId = stream.sessionId;
 
@@ -647,6 +678,9 @@ export class Worker {
     // The output was whole, checked and public: its thread now has a place
     // on `@original` (§3.2), also after the 14-minute switch.
     if (!job.ephemeral && surface.kind !== "gone") await openThread();
+    // Shown (or said private): no delivery repeats it. A turn that could
+    // show nothing stays unshown for `turn.completed`.
+    if (surface.kind !== "gone") await store.saveThread(bound);
   }
 
   /** The 14-minute switch (§7.5): from the token to a bot message, or to Datalayer. */
@@ -1048,6 +1082,194 @@ export class Worker {
     );
   }
 
+  /** The person a press or a submit speaks for, on one deployment. */
+  #person(hostKey: string, job: InteractionJob, deploymentUid: string): Person {
+    return { deploymentUid, hostKey, userId: job.userId };
+  }
+
+  /**
+   * *Show the request* (§3.6, DC-302): the press was deferred privately
+   * (type 5, flag 64), so its `@original` is filled with the card for the
+   * person the approval waits on, read as them; anyone else is told who
+   * decides. An approval no longer pending updates its thread line instead.
+   */
+  async #show(
+    job: InteractionJob,
+    token: string,
+    installation: Installation,
+    hostKey: string,
+    row: ComponentRow,
+  ): Promise<void> {
+    const say = (text: string) => this.#privately(job, token, text);
+    const { approvalId, deploymentUid, appName } = row.payload;
+    if (
+      typeof approvalId !== "string" ||
+      typeof deploymentUid !== "string" ||
+      typeof appName !== "string"
+    )
+      throw new Error(`A Show button's row names no approval: ${row.renderId}`);
+    if (row.ownerId !== job.userId)
+      return this.#privately(job, token, whoDecides(row.ownerId), true);
+    const link = await this.#linked(installation, hostKey, job.userId);
+    if (!link.linked) return say(WORDS.notLinked);
+    let presentation;
+    try {
+      presentation = await this.deps.asPerson.presentation(
+        this.#person(hostKey, job, deploymentUid),
+        approvalId,
+      );
+    } catch (error) {
+      if (
+        error instanceof HostRefusedError &&
+        [403, 404].includes(error.status)
+      )
+        return say(WORDS.notYours);
+      throw error;
+    }
+    const rows = await this.deps.store.approvalComponents(
+      installation.applicationId,
+      installation.guildId,
+      approvalId,
+    );
+    if (presentation.status !== "pending") {
+      await finishApproval(this.deps.port, rows, presentation.status);
+      return say(
+        `${statusWords(presentation.status)}: this request is no longer waiting.`,
+      );
+    }
+    const ids = {
+      approve: newRenderId(),
+      open: newRenderId(),
+      reject: newRenderId(),
+    };
+    const card = approvalCard(presentation, {
+      appName,
+      flags: EPHEMERAL,
+      ids,
+    });
+    await saveCardRows(
+      this.deps.store,
+      {
+        applicationId: installation.applicationId,
+        guildId: installation.guildId,
+        ownerId: job.userId,
+      },
+      ids,
+      {
+        approvalId,
+        deploymentUid,
+        digest: presentation.digest,
+        toolName: presentation.tool_name,
+      },
+    );
+    await this.deps.port.editOriginal(token, card.body);
+  }
+
+  /**
+   * A confirmed Approve or Reject (§3.6, DC-303): the modal's submit was
+   * deferred as an update of the card, so the card is edited once decided
+   * and anything else is said in a private follow-up. Only the person the
+   * card was made for decides; the approval is read again as them, decided
+   * only when still pending, still the presentation shown (its digest) and
+   * one a host may decide, and once (claimed by the approval).
+   */
+  async #decide(
+    job: InteractionJob,
+    token: string,
+    installation: Installation,
+    hostKey: string,
+  ): Promise<void> {
+    const { store, port, logger } = this.deps;
+    const tell = (text: string) =>
+      port.followUp(token, privately(text)).then(() => undefined);
+    const [, kind, renderId] = (job.modal ?? "").split(":");
+    const approve = kind === "confirm-approve";
+    const row = renderId ? await store.component(renderId) : undefined;
+    if (
+      !row ||
+      row.kind !== (approve ? "approve" : "reject") ||
+      row.applicationId !== installation.applicationId ||
+      row.guildId !== installation.guildId
+    )
+      return tell("This button no longer does anything.");
+    const { approvalId, deploymentUid, digest, toolName } = row.payload;
+    if (
+      typeof approvalId !== "string" ||
+      typeof deploymentUid !== "string" ||
+      typeof digest !== "string" ||
+      typeof toolName !== "string"
+    )
+      throw new Error(`A decision's row names no approval: ${row.renderId}`);
+    if (row.ownerId !== job.userId)
+      return port
+        .followUp(token, privately(whoDecides(row.ownerId), true))
+        .then(() => undefined);
+    const claim = `decision:${installation.applicationId}:${approvalId}`;
+    if (!(await store.claimEvent(claim))) return tell(WORDS.alreadyAnswered);
+    let decided = false;
+    try {
+      const link = await this.#linked(installation, hostKey, job.userId);
+      if (!link.linked) return await tell(WORDS.notLinked);
+      const person = this.#person(hostKey, job, deploymentUid);
+      const rows = () =>
+        store.approvalComponents(
+          installation.applicationId,
+          installation.guildId,
+          approvalId,
+        );
+      let presentation;
+      try {
+        presentation = await this.deps.asPerson.presentation(
+          person,
+          approvalId,
+        );
+      } catch (error) {
+        if (
+          error instanceof HostRefusedError &&
+          [403, 404].includes(error.status)
+        )
+          return await tell(WORDS.notYours);
+        throw error;
+      }
+      if (presentation.status !== "pending") {
+        decided = true;
+        await finishApproval(port, await rows(), presentation.status);
+        await port.editOriginal(
+          token,
+          decidedBody(toolName, presentation.status),
+        );
+        return;
+      }
+      if (presentation.digest !== digest || !hostMayDecide(presentation))
+        return await tell(WORDS.approvalChanged);
+      let status: string;
+      try {
+        ({ status } = await this.deps.asPerson.decide(person, approvalId, {
+          approve,
+          digest,
+          ...(job.fields?.note ? { note: job.fields.note } : {}),
+        }));
+      } catch (error) {
+        if (error instanceof HostRefusedError) {
+          if (error.status === 404) return await tell(WORDS.notYours);
+          if (error.status === 403 || error.status === 409)
+            return await tell(WORDS.approvalChanged);
+        }
+        throw error;
+      }
+      decided = true;
+      // The decision itself is audited at Datalayer, as the person.
+      logger.info("approval.decided", { status });
+      const all = await rows();
+      for (const one of all)
+        await store.answerComponent(one.renderId, job.userId);
+      await finishApproval(port, all, status, job.userId);
+      await port.editOriginal(token, decidedBody(toolName, status, job.userId));
+    } finally {
+      if (!decided) await store.releaseEvent(claim);
+    }
+  }
+
   async #component(
     job: InteractionJob,
     token: string,
@@ -1121,6 +1343,8 @@ export class Worker {
       return;
     }
     if (component.kind === "open") return this.#open(job, token, row);
+    if (component.kind === "show")
+      return this.#show(job, token, installation, hostKey, row);
     if (component.kind === "app") {
       if (row.ownerId !== job.userId) {
         await this.deps.port.followUp(token, privately(WORDS.notYours));

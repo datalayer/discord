@@ -77,6 +77,49 @@ function contract(name: string, make: () => Promise<DiscordStore>) {
       });
     });
 
+    it("finds an approval's rows in its server only, oldest first, and keeps a thread's unshown session until cleared (DC-301)", async () => {
+      const store = await make();
+      for (const [renderId, kind, guildId, approvalId] of [
+        ["render-0101", "show", GUILD, "ap-1"],
+        ["render-0102", "approve", GUILD, "ap-1"],
+        ["render-0103", "show", GUILD, "ap-2"],
+        ["render-0104", "show", id(4), "ap-1"],
+      ] as const)
+        await store.saveComponent({
+          applicationId: APPLICATION,
+          guildId,
+          kind,
+          ownerId: ALICE,
+          payload: { approvalId, digest: "d" },
+          renderId,
+        });
+      expect(
+        (await store.approvalComponents(APPLICATION, GUILD, "ap-1")).map(
+          (one) => [one.renderId, one.kind],
+        ),
+      ).toEqual([
+        ["render-0101", "show"],
+        ["render-0102", "approve"],
+      ]);
+      expect(
+        await store.approvalComponents(APPLICATION, GUILD, "ap-9"),
+      ).toEqual([]);
+      const binding = {
+        applicationId: APPLICATION,
+        channelId: id(3),
+        generation: 0,
+        guildId: GUILD,
+        sessionUid: "s-1",
+        threadKey: "t-unshown",
+      };
+      await store.saveThread({ ...binding, unshownSessionUid: "s-1" });
+      expect((await store.thread("t-unshown"))?.unshownSessionUid).toBe("s-1");
+      await store.saveThread({ ...binding, unshownSessionUid: undefined });
+      expect((await store.thread("t-unshown"))?.unshownSessionUid).toBe(
+        undefined,
+      );
+    });
+
     it("spends an install state once, and never an expired one", async () => {
       const store = await make();
       const cipher = testCipher();

@@ -12,6 +12,11 @@ import type { MessageBody } from "./discord-port.js";
  * posts silent in quiet mode, and the status line under a running answer.
  */
 
+/** Whether a text holds a credential-shaped value (the shared redaction's shapes). */
+export function secretBearing(text: string): boolean {
+  return redact(text) !== text;
+}
+
 /** A message's content limit. */
 export const CONTENT_LIMIT = 2000;
 /** An embed description's limit, and all of a message's embeds together. */
@@ -221,11 +226,15 @@ export function decisionNotice(ownerId: string, toolName: string): MessageBody {
   };
 }
 
-/** An ephemeral answer to one person (`/datalayer`, refusals). */
-export function privately(content: string): MessageBody {
+/**
+ * An ephemeral answer to one person (`/datalayer`, refusals). Text that is
+ * not the service's own has its mentions made inert; the service's own
+ * words (`ours`) may name a member, shown as their name and never pinged.
+ */
+export function privately(content: string, ours = false): MessageBody {
   return {
     allowed_mentions: NO_MENTIONS,
-    content: splitText(inertMentions(content))[0] ?? "",
+    content: splitText(ours ? content : inertMentions(content))[0] ?? "",
     flags: EPHEMERAL,
   };
 }

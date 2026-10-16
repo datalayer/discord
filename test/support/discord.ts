@@ -6,11 +6,16 @@ import {
 } from "node:crypto";
 import type { AddressInfo } from "node:net";
 
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+
 import {
   HostRefusedError,
   Logger,
+  presentationSchema,
   SecretCipher,
   type AgentClient,
+  type ApprovalPresentation,
   type Clock,
   type HostSelf,
   type HostTurnRequest,
@@ -19,6 +24,7 @@ import {
   type TurnStream,
 } from "@datalayer/agent-runtimes/lib/portable/hosts";
 
+import type { AsPerson, Person } from "../../src/as-person.js";
 import type {
   BotAuthorization,
   DiscordPort,
@@ -284,8 +290,25 @@ export class FakeHosts {
       };
     return { paused: this.self.paused };
   }
+  /** The deliveries acknowledged, and the webhook registered at a bind. */
+  acknowledged: string[] = [];
+  webhooks: Array<{ hostKey: string; url: string }> = [];
+  refuseWebhook = false;
   // `self` is a field above for tests to change; the client method reads it.
   readonly client = {
+    acknowledge: async (_hostKey: string, uid: string) => {
+      this.acknowledged.push(uid);
+    },
+    setWebhook: async (hostKey: string, url: string) => {
+      if (this.refuseWebhook)
+        throw new HostRefusedError(
+          503,
+          "unavailable",
+          "Datalayer did not register the delivery address",
+        );
+      this.webhooks.push({ hostKey, url });
+      return { signingSecret: "delivery-secret-for-tests", version: 1 };
+    },
     admin: (
       hostKey: string,
       user: string,
@@ -382,4 +405,89 @@ export function installation(
     state: "active",
     ...overrides,
   };
+}
+
+/** Agent Runtimes' shared fixture: what the ai-agents host routes answer. */
+export const CONTRACTS = JSON.parse(
+  readFileSync(
+    createRequire(import.meta.url).resolve(
+      "@datalayer/agent-runtimes/lib/portable/hosts/contracts.json",
+    ),
+    "utf8",
+  ),
+) as { presentation: { example: unknown } };
+
+/** An approval's presentation, built from the shared contract's example by its real schema. */
+export function presentation(
+  overrides: Partial<ApprovalPresentation> = {},
+): ApprovalPresentation {
+  return presentationSchema.parse({
+    ...(CONTRACTS.presentation.example as object),
+    ...overrides,
+  });
+}
+
+/**
+ * Datalayer as one member: the approvals they may read and decide (each
+ * owned by one Discord member) and a session's last answer.
+ */
+export class FakeAsPerson implements AsPerson {
+  /** Approvals by id: the presentation and the Discord member it waits on. */
+  readonly approvals = new Map<
+    string,
+    { presentation: ApprovalPresentation; owner: string }
+  >();
+  readonly decisions: Array<{
+    approvalId: string;
+    user: string;
+    approve: boolean;
+    digest: string;
+    note?: string;
+  }> = [];
+  readonly reads: Array<{ approvalId: string; user: string }> = [];
+  answers = new Map<string, string | undefined>();
+
+  #owned(person: Person, approvalId: string) {
+    const approval = this.approvals.get(approvalId);
+    if (!approval || approval.owner !== person.userId)
+      throw new HostRefusedError(
+        404,
+        "Not found.",
+        "Datalayer did not answer the approval",
+      );
+    return approval;
+  }
+
+  async presentation(person: Person, approvalId: string) {
+    this.reads.push({ approvalId, user: person.userId });
+    return this.#owned(person, approvalId).presentation;
+  }
+
+  async decide(
+    person: Person,
+    approvalId: string,
+    decision: { approve: boolean; digest: string; note?: string },
+  ) {
+    const approval = this.#owned(person, approvalId);
+    if (approval.presentation.status !== "pending")
+      throw new HostRefusedError(
+        409,
+        "Already decided.",
+        "Datalayer did not take the decision",
+      );
+    if (approval.presentation.digest !== decision.digest)
+      throw new HostRefusedError(
+        409,
+        "The approval changed.",
+        "Datalayer did not take the decision",
+      );
+    this.decisions.push({ approvalId, user: person.userId, ...decision });
+    const status = decision.approve ? "approved" : "rejected";
+    approval.presentation = { ...approval.presentation, status };
+    return { status };
+  }
+
+  async lastAnswer(_person: Person, sessionUid: string) {
+    return this.answers.get(sessionUid);
+  }
 }
