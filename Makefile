@@ -2,7 +2,8 @@
 
 # The image's tag: bump it for every push, never overwrite a pushed tag.
 # 0.1.0: pushed 16 October 2026 (sha256:b340ed19b34a…), pinned in up.sh datalayer_discord.
-VERSION ?= 0.1.0
+# 0.1.1: the gateway role, mentions, Post in thread, questions, quiet or noisy, Start over (Node 22).
+VERSION ?= 0.1.1
 REGISTRY ?= $(DATALAYER_DOCKER_REGISTRY)
 EXPORT := $(HOME)/.cache/discord-export-$(shell git rev-parse --short HEAD)
 
