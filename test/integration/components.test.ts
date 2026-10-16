@@ -290,7 +290,7 @@ describe("components through the interaction handler (DC-207)", () => {
       message,
     );
     // The next mention in the thread, over the gateway.
-    await h.worker.handle({
+    await h.worker.message({
       applicationId: APPLICATION,
       authorId: ALICE,
       authorName: "alice",
