@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16.4-alpine
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: discord
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DISCORD_TEST_DATABASE_URL: postgres://postgres:test@127.0.0.1:5432/discord
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.19"
+      # No lockfile is kept (the monorepo's rule): the exact versions of
+      # package.json are installed. agent-runtimes is an optional peer, never
+      # installed whole: its pinned release's lib/portable is extracted after
+      # the install (plans/DISCORD.md §4.2). No second checkout.
+      - run: npm install --no-audit --no-fund
+      - name: agent-runtimes' lib/portable (config.agentRuntimesVersion)
+        run: npm run fetch:agent-runtimes
+      - name: Format
+        run: npm run format:check
+      - name: Lint (Node globals declared)
+        run: npm run lint
+      - name: Strict TypeScript
+        run: npm run typecheck
+      - name: The bundle graph (sources and agent-runtimes' lib/portable only)
+        run: npm run check:imports
+      - name: The installed graph of the bundle's externals
+        run: npm run check:installed
+      - name: Tests (memory and PostgreSQL)
+        run: npm test
+      - name: Bundle
+        run: npm run bundle
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Secret scan (gitleaks, the whole history)
+        run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.21.2 detect --source /repo --redact --no-banner -v
+
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Container build
+        run: docker build -t datalayer-discord:ci .
+      - name: Inside the image — non-root, the bundle only, no agent-runtimes, Jupyter or React package
+        run: |
+          set -euo pipefail
+          test "$(docker run --rm --entrypoint id datalayer-discord:ci -u)" != "0"
+          docker run --rm --entrypoint sh datalayer-discord:ci -c '
+            test -f dist/index.js && test -f dist/migrate.js && test -f dist/dead-letters.js
+            test -d migrations
+            ! test -e node_modules/@datalayer/agent-runtimes
+            for forbidden in react react-dom @jupyterlab @lumino @primer @datalayer/reactor tsx esbuild vitest; do
+              ! test -e "node_modules/$forbidden" || { echo "node_modules/$forbidden is in the image"; exit 1; }
+            done'
+      - name: The image serves /healthz and /readyz
+        run: |
+          # Test values, built here so that no secret scanner takes them for credentials.
+          application="$(printf '%s%s' 123456789 012345678)"
+          key="$(printf '0%.0s' $(seq 1 32) | base64)"
+          docker run -d --name discord -p 3000:3000 \
+            -e NODE_ENV=test -e DATALAYER_DISCORD_ROLE=all \
+            -e DISCORD_APPLICATION_ID="$application" \
+            -e DISCORD_PUBLIC_KEY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+            -e DISCORD_BOT_TOKEN=ci-only-not-a-bot-token -e DISCORD_CLIENT_SECRET=ci-only \
+            -e DISCORD_TOKEN_ENCRYPTION_KEY="$key" \
+            -e DISCORD_TOKEN_ENCRYPTION_KEY_VERSION=1 \
+            -e DISCORD_APP_URL=https://discord.example -e DATALAYER_API_URL=https://r1.example \
+            -e DATALAYER_WEB_URL=https://datalayer.example \
+            datalayer-discord:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/healthz; then curl -fsS http://127.0.0.1:3000/readyz; exit $?; fi
+            sleep 1
+          done
+          docker logs discord; exit 1

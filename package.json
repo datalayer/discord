@@ -1,0 +1,64 @@
+{
+  "name": "@datalayer/discord",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The @Datalayer Discord application",
+  "author": "Datalayer",
+  "license": "BSD-3-Clause",
+  "type": "module",
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "config": {
+    "agentRuntimesVersion": "1.5.46"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "build:lib": "tsc -p tsconfig.build.json",
+    "bundle": "node --import tsx scripts/bundle.ts",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run check:imports && npm test && npm run bundle",
+    "check:imports": "node --import tsx scripts/bundle.ts --check",
+    "check:installed": "node --import tsx scripts/check-installed.ts",
+    "commands:check": "node --import tsx scripts/commands.ts --check",
+    "dev": "node --env-file-if-exists=.env --import tsx --watch src/index.ts",
+    "fetch:agent-runtimes": "node scripts/fetch-agent-runtimes.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint src test scripts",
+    "migrate": "node --env-file-if-exists=.env --import tsx scripts/migrate.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "watch:lib": "tsc -w -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@discordjs/rest": "2.6.3",
+    "discord-api-types": "0.38.56",
+    "discord-interactions": "4.4.0",
+    "pg": "8.23.1",
+    "zod": "4.6.5"
+  },
+  "peerDependencies": {
+    "@datalayer/agent-runtimes": ">=1.5.46 <2"
+  },
+  "peerDependenciesMeta": {
+    "@datalayer/agent-runtimes": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.2",
+    "@types/node": "24.12.2",
+    "@types/pg": "8.23.1",
+    "esbuild": "0.25.12",
+    "eslint": "9.39.2",
+    "globals": "16.5.0",
+    "prettier": "3.6.2",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.69.0",
+    "vitest": "4.0.18"
+  }
+}

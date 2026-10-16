@@ -1,0 +1,3 @@
+# Findings gitleaks may report that are not credentials, one per line as
+# <commit>:<file>:<rule>:<line>, each with why. None yet: test tokens are
+# built so that no Discord rule matches them (plans/DISCORD.md §0.3, 5).
