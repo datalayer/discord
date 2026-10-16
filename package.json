@@ -21,6 +21,8 @@
     "check:imports": "node --import tsx scripts/bundle.ts --check",
     "check:installed": "node --import tsx scripts/check-installed.ts",
     "commands:check": "node --import tsx scripts/commands.ts --check",
+    "commands:register": "node --import tsx scripts/commands.ts",
+    "commands:schema": "node --import tsx scripts/commands.ts --schema",
     "dev": "node --env-file-if-exists=.env --import tsx --watch src/index.ts",
     "fetch:agent-runtimes": "node scripts/fetch-agent-runtimes.mjs",
     "format": "prettier --write .",

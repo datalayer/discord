@@ -45,6 +45,8 @@ jobs:
         run: npm run check:imports
       - name: The installed graph of the bundle's externals
         run: npm run check:installed
+      - name: Commands within Discord's limits (offline)
+        run: npm run commands:schema
       - name: Tests (memory and PostgreSQL)
         run: npm test
       - name: Bundle

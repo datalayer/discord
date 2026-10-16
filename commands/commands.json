@@ -1,0 +1,114 @@
+[
+  {
+    "name": "ask",
+    "type": 1,
+    "description": "Ask a Datalayer application",
+    "integration_types": [0],
+    "contexts": [0, 1],
+    "options": [
+      {
+        "name": "question",
+        "description": "What to ask",
+        "type": 3,
+        "required": true,
+        "min_length": 1,
+        "max_length": 6000
+      },
+      {
+        "name": "application",
+        "description": "The application that answers (default: this thread's or your default)",
+        "type": 3,
+        "required": false,
+        "autocomplete": true
+      },
+      {
+        "name": "private",
+        "description": "Answer only to you",
+        "type": 5,
+        "required": false
+      }
+    ]
+  },
+  {
+    "name": "datalayer",
+    "type": 1,
+    "description": "Your Datalayer account and this thread",
+    "integration_types": [0],
+    "contexts": [0, 1],
+    "options": [
+      {
+        "name": "status",
+        "description": "What is connected here, and your usage",
+        "type": 1
+      },
+      {
+        "name": "link",
+        "description": "Link your Datalayer account",
+        "type": 1
+      },
+      {
+        "name": "unlink",
+        "description": "Unlink your Datalayer account",
+        "type": 1
+      },
+      {
+        "name": "app",
+        "description": "Choose the application for this thread or your default",
+        "type": 1
+      },
+      {
+        "name": "start-over",
+        "description": "Start a new session in this thread",
+        "type": 1
+      },
+      {
+        "name": "forget",
+        "description": "Delete your Discord data at Datalayer",
+        "type": 1
+      }
+    ]
+  },
+  {
+    "name": "datalayer-admin",
+    "type": 1,
+    "description": "Administer @Datalayer in this server",
+    "integration_types": [0],
+    "contexts": [0],
+    "default_member_permissions": "32",
+    "options": [
+      {
+        "name": "pause",
+        "description": "Pause @Datalayer in this server",
+        "type": 1
+      },
+      {
+        "name": "resume",
+        "description": "Resume @Datalayer in this server",
+        "type": 1
+      },
+      {
+        "name": "channel",
+        "description": "Allow or deny @Datalayer in this channel",
+        "type": 1,
+        "options": [
+          {
+            "name": "state",
+            "description": "Allow or deny",
+            "type": 3,
+            "required": true,
+            "choices": [
+              { "name": "allow", "value": "allow" },
+              { "name": "deny", "value": "deny" }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Ask Datalayer",
+    "type": 3,
+    "integration_types": [0],
+    "contexts": [0, 1]
+  }
+]
