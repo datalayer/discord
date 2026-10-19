@@ -345,7 +345,9 @@ export class PostgresStore implements DiscordStore {
       "SELECT discord_forget_jobs($1, $2) AS count",
       [applicationId, userId],
     );
-    return count + Number(rows[0].count);
+    const [row] = rows;
+    if (!row) throw new Error("discord_forget_jobs answered no row");
+    return count + Number(row.count);
   }
 
   async thread(threadKey: string) {
@@ -583,7 +585,9 @@ export class PostgresStore implements DiscordStore {
       "SELECT discord_drop_spent_tokens($1) AS count",
       [before.getTime()],
     );
-    return Number(rows[0].count);
+    const [row] = rows;
+    if (!row) throw new Error("discord_drop_spent_tokens answered no row");
+    return Number(row.count);
   }
 
   async saveState(nonce: string, bindCode: EncryptedSecret, expiresAt: Date) {

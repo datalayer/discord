@@ -62,13 +62,16 @@ describe.runIf(Boolean(DATABASE_URL))("database roles on PostgreSQL", () => {
         DATALAYER_DISCORD_SERVICE_ROLE: SERVICE,
       },
     });
-  const job = async (payload: object, state: string, attempts = 0) =>
-    (
+  const job = async (payload: object, state: string, attempts = 0) => {
+    const [row] = (
       await admin.query<{ id: string }>(
         "INSERT INTO discord_jobs (payload, state, attempts) VALUES ($1, $2, $3) RETURNING id::text",
         [payload, state, attempts],
       )
-    ).rows[0].id;
+    ).rows;
+    if (!row) throw new Error("the insert returned no row");
+    return row.id;
+  };
   const audit = async () =>
     (
       await admin.query<{
