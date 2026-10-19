@@ -50,6 +50,7 @@ import type { MessageJob } from "./gateway.js";
 import { newRenderId, type InteractionJob } from "./interactions.js";
 import { missingPermissions } from "./permissions.js";
 import {
+  answeredComponents,
   EPHEMERAL,
   finalBodies,
   NO_MENTIONS,
@@ -1185,7 +1186,11 @@ export class Worker {
         guildId: turn.guildId,
         kind: "asking",
         ownerId: job.userId,
-        payload: { sessionUid: sessionId, threadKey: turn.threadKey },
+        payload: {
+          open: `dc:open:${openId}`,
+          sessionUid: sessionId,
+          threadKey: turn.threadKey,
+        },
         renderId: askingId,
       });
       choiceIds = [];
@@ -1779,7 +1784,8 @@ export class Worker {
    * asking event — the first choice answers it, any later press of any of
    * its buttons is told so. The choice is their own next turn in the
    * session, posted as the bot in the session's thread (or beside the
-   * answered message when no thread exists), never over the answered message.
+   * answered message when no thread exists), never over the answered
+   * message, whose buttons only are replaced by what answered.
    */
   async #answer(
     job: InteractionJob,
@@ -1803,6 +1809,12 @@ export class Worker {
     if (!(await store.answerComponent(askingId, job.userId)))
       return void (await say(WORDS.alreadyAnswered));
     await store.answerComponent(row.renderId, job.userId);
+    // The first accepted answer replaces the buttons with what answered
+    // (DC-304): components only, the answer's text kept.
+    const open = (await store.component(askingId))?.payload.open;
+    if (typeof open !== "string")
+      throw new Error(`A question's row names no session button: ${askingId}`);
+    await port.editOriginal(token, answeredComponents(option, open));
     const binding = await store.thread(threadKey);
     // Where the session's thread is: the key keeps the thread's id (the
     // answered message's, for a first `/ask`); a thread not started leaves

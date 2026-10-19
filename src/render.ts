@@ -289,6 +289,45 @@ export function finalBodies(
 }
 
 /**
+ * The answered question's message once its first choice is accepted
+ * (DC-304): the choice buttons replaced by what answered — one
+ * disabled button with the chosen label — and *Open in Datalayer* kept.
+ * Components only: the answer's text is never rewritten.
+ */
+export function answeredComponents(
+  option: string,
+  openId: string,
+): MessageBody {
+  const label =
+    option.length > BUTTON_LABEL_LIMIT - 2
+      ? `✓ ${option.slice(0, BUTTON_LABEL_LIMIT - 3)}…`
+      : `✓ ${option}`;
+  return {
+    allowed_mentions: NO_MENTIONS,
+    components: [
+      {
+        components: [
+          {
+            custom_id: "dc:answered",
+            disabled: true,
+            label,
+            style: 3,
+            type: 2,
+          },
+        ],
+        type: 1,
+      },
+      {
+        components: [
+          { custom_id: openId, label: OPEN_LABEL, style: 2, type: 2 },
+        ],
+        type: 1,
+      },
+    ],
+  };
+}
+
+/**
  * A routine post (an answer delivered later, a progress note): silent in
  * quiet mode (`SUPPRESS_NOTIFICATIONS`), nobody pinged either way (DC-307).
  */

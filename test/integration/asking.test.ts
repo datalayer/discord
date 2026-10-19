@@ -17,9 +17,10 @@ import { connected, harness, type Harness } from "../support/worker.js";
 /**
  * Questions a turn ends on (`loop.ask`, DC-304): five or fewer choices as
  * buttons for the person who asked, answered once per asking event — the
- * first press answers it, a press of another of its buttons is told so —
- * and the choice their own next turn in the session, posted as the bot in
- * the thread, never over the answered message. More than five choices, a
+ * first press answers it and replaces the buttons with what answered, a
+ * press of another of its buttons is told so — and the choice their own
+ * next turn in the session, posted as the bot in the thread, never over
+ * the answered message's text. More than five choices, a
  * text, file or form question, and a kind the service does not know are
  * answered in Datalayer.
  */
@@ -103,8 +104,13 @@ describe("a question the turn ends on (DC-304)", () => {
     expect(turn.externalUserId).toBe(ALICE);
     expect(turn.sessionId).toBe(session);
     expect(turn.provenance.threadExists).toBe(true);
-    // Posted as the bot in the thread; the answered message never touched.
-    expect(h.port.count("editOriginal")).toBe(edits);
+    // The answered message: its buttons replaced by what answered,
+    // its text never rewritten; the turn posted as the bot in the thread.
+    expect(h.port.count("editOriginal")).toBe(edits + 1);
+    const answered = h.port.bodies("editOriginal").at(-1)!;
+    expect(answered.content).toBeUndefined();
+    expect(labels(h)).toEqual([["✓ Wait for QA"], [OPEN_LABEL]]);
+    expect(rows(h)[1]![0]!.custom_id).toBe(others![0]!.custom_id);
     expect(h.port.count("deleteOriginal")).toBe(0);
     const posted = h.port.calls.filter(
       (call) =>
