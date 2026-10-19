@@ -59,7 +59,87 @@ is idempotent.
 Dead jobs: `DATALAYER_OPERATOR=<your name> node dist/dead-letters.js list |
 replay <id> | payload <id> <reason>`. `list` shows metadata and a hash of each
 payload, never its words; every replay and payload read is kept with its
-operator.
+operator (`discord_job_replays`, `discord_payload_access`) and the database
+role that did it (`database_role`).
+
+### Database roles (DC-403)
+
+By default the service's role (`discord`, the owner CNPG creates) owns every
+table and runs the migrations, so it can read a dead job's payload. The split
+takes that away:
+
+- `discord_owner` owns the tables and functions and runs the migrations,
+  then `migrations/roles/` (`node dist/migrate.js --roles`, with
+  `DATALAYER_DISCORD_SERVICE_ROLE=discord`).
+- The service's role keeps its tables and reaches the queue through the view
+  `discord.discord_jobs`, which has no dead job (the default `search_path`,
+  `"$user", public`, finds it first); it may not read `public.discord_jobs` or
+  the audit. It still drops spent tokens and forgets a person's dead requests
+  through `discord_drop_spent_tokens` and `discord_forget_jobs`, functions of
+  the owner (migration 008).
+- `discord_dead_letters` reads dead jobs only (`discord_dead_letters.discord_jobs`),
+  replays them, and appends the audit, which it may not read or change. The
+  dead-letters bin refuses the service's role.
+
+On r1, once:
+
+1. Create the two roles' Secrets in `datalayer-api`, of type
+   `kubernetes.io/basic-auth`, each with the keys `username` and `password`
+   (a password of URL-safe characters, such as `openssl rand -hex 32`):
+   `datalayer-discord-db-owner` (`username: discord_owner`) and
+   `datalayer-discord-db-dead-letters` (`username: discord_dead_letters`).
+2. Deploy with `DATALAYER_DISCORD_DATABASE_ROLES=create`: the image with
+   migration 008, still migrated as `discord`; CNPG creates the two login
+   roles from the Secrets (`discord.databaseRoles.create`).
+3. As a superuser, in the `discord` database (for instance
+   `kubectl exec -i -n datalayer-api datalayer-discord-postgresql-1 -c postgres -- psql -v ON_ERROR_STOP=1 -d discord`
+   on the primary), move the tables and functions to `discord_owner`. The
+   service keeps running: its role is granted the tables back until the
+   next step takes the queue's and the audit's away.
+
+<!-- one-time-owner-sql -->
+
+```sql
+BEGIN;
+CREATE SCHEMA IF NOT EXISTS discord AUTHORIZATION discord_owner;
+CREATE SCHEMA IF NOT EXISTS discord_dead_letters AUTHORIZATION discord_owner;
+GRANT CREATE ON SCHEMA public TO discord_owner;
+ALTER TABLE discord_event_claims OWNER TO discord_owner;
+ALTER TABLE discord_jobs OWNER TO discord_owner;
+ALTER TABLE discord_usage OWNER TO discord_owner;
+ALTER TABLE discord_payload_access OWNER TO discord_owner;
+ALTER TABLE discord_job_replays OWNER TO discord_owner;
+ALTER TABLE discord_installation OWNER TO discord_owner;
+ALTER TABLE discord_user_link OWNER TO discord_owner;
+ALTER TABLE discord_oauth_state OWNER TO discord_owner;
+ALTER TABLE discord_thread_binding OWNER TO discord_owner;
+ALTER TABLE discord_turn OWNER TO discord_owner;
+ALTER TABLE discord_component OWNER TO discord_owner;
+ALTER TABLE discord_allowance OWNER TO discord_owner;
+ALTER TABLE discord_gateway_session OWNER TO discord_owner;
+ALTER TABLE discord_direct_choice OWNER TO discord_owner;
+ALTER FUNCTION discord_drop_spent_tokens(bigint) OWNER TO discord_owner;
+ALTER FUNCTION discord_forget_jobs(text, text) OWNER TO discord_owner;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO discord;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO discord;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO discord;
+COMMIT;
+```
+
+<!-- /one-time-owner-sql -->
+
+4. Deploy with `DATALAYER_DISCORD_DATABASE_ROLES=enforce`
+   (`discord.databaseRoles.enforce`): the migrate job runs as `discord_owner`
+   with `--roles`, which refuses to run while any `discord_` table or
+   function, or either schema, is not `discord_owner`'s, and names it. The
+   `datalayer-discord-dead-letters` Deployment (no replica) holds the
+   reader's `DATABASE_URL`: scale it to one, then
+   `kubectl exec -n datalayer-api deploy/datalayer-discord-dead-letters -- env DATALAYER_OPERATOR=<your name> node dist/dead-letters.js list`,
+   and back to zero.
+
+Who may run the bin is who may exec into that Deployment (Kubernetes RBAC,
+recorded in the API server's audit log); the name it keeps is the one
+`DATALAYER_OPERATOR` gives.
 
 ## What runs, and the image
 

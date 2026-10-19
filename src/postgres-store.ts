@@ -338,19 +338,14 @@ export class PostgresStore implements DiscordStore {
         )
       ).rowCount ?? 0;
     // Their queued and dead requests; the one running now (this `forget`
-    // among them) is deleted by the queue when it is done.
-    count +=
-      (
-        await this.database.query(
-          `DELETE FROM discord_jobs
-            WHERE state <> 'processing'
-              AND payload->>'kind' = 'interaction'
-              AND payload#>>'{key,applicationId}' = $1
-              AND payload->>'userId' = $2`,
-          [applicationId, userId],
-        )
-      ).rowCount ?? 0;
-    return count;
+    // among them) is deleted by the queue when it is done. A function of the
+    // tables' owner (migration 008): the service's role never reads a dead
+    // job (DC-403).
+    const { rows } = await this.database.query<{ count: string }>(
+      "SELECT discord_forget_jobs($1, $2) AS count",
+      [applicationId, userId],
+    );
+    return count + Number(rows[0].count);
   }
 
   async thread(threadKey: string) {
@@ -582,13 +577,13 @@ export class PostgresStore implements DiscordStore {
   }
 
   async dropSpentTokens(before: Date) {
-    const { rowCount } = await this.database.query(
-      `UPDATE discord_jobs SET payload = payload - 'token'
-        WHERE payload->>'kind' = 'interaction' AND payload ? 'token'
-          AND (payload->>'receivedAt')::bigint < $1`,
+    // Dead jobs' too, through a function of the tables' owner (migration
+    // 008): the service's role never reads a dead job (DC-403).
+    const { rows } = await this.database.query<{ count: string }>(
+      "SELECT discord_drop_spent_tokens($1) AS count",
       [before.getTime()],
     );
-    return rowCount ?? 0;
+    return Number(rows[0].count);
   }
 
   async saveState(nonce: string, bindCode: EncryptedSecret, expiresAt: Date) {
