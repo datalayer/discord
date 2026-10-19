@@ -36,14 +36,16 @@ const as = (role: string) => {
 };
 
 /** The superuser's one-time statements, exactly as docs/operations.md gives them. */
-const oneTimeSql = () => {
+const oneTimeSql = (): string => {
   const doc = readFileSync(
     new URL("../docs/operations.md", import.meta.url),
     "utf8",
   );
-  const block = /<!-- one-time-owner-sql -->\s*```sql\n([\s\S]*?)```/.exec(doc);
-  if (!block) throw new Error("docs/operations.md has no one-time SQL.");
-  return block[1];
+  const sql = /<!-- one-time-owner-sql -->\s*```sql\n([\s\S]*?)```/.exec(
+    doc,
+  )?.[1];
+  if (!sql) throw new Error("docs/operations.md has no one-time SQL.");
+  return sql;
 };
 
 describe.runIf(Boolean(DATABASE_URL))("database roles on PostgreSQL", () => {
