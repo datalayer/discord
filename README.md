@@ -6,7 +6,7 @@
 
 `@Datalayer` brings a Datalayer application into a Discord server: `/ask` in a channel or thread, the _Ask Datalayer_ message command, `/datalayer` for a person's link and thread, and `/datalayer-admin` for the server. Discord is a host of Datalayer's existing session and approval contracts (the shared host kit in agent-runtimes' `src/portable/hosts`); it is not a separate agent runtime.
 
-The user and administrator documentation is at [datalayer.ai/docs/discord](https://datalayer.ai/docs/discord). The service's settings, roles, database and image are in [`docs/operations.md`](docs/operations.md); the decisions in [`docs/adr/`](docs/adr/). `discord:0.1.0` runs on r1 (the ingress and worker roles) at `https://discord-dev.datalayer.run` for `Datalayer Dev`; the pilot's host `https://discord.datalayer.run` has its certificate and waits on the pilot application (DC-501).
+The user and administrator documentation is at [datalayer.ai/docs/discord](https://datalayer.ai/docs/discord). The service's settings, roles, database and image are in [`docs/operations.md`](docs/operations.md); the decisions in [`docs/adr/`](docs/adr/). `discord:0.1.4` runs on r1 (the ingress, worker and gateway roles) at `https://discord-dev.datalayer.run` for `Datalayer Dev`; the pilot's host `https://discord.datalayer.run` has its certificate and waits on the pilot application (DC-501).
 
 ## Creating the Discord applications
 
