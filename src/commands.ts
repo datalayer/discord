@@ -143,8 +143,17 @@ export function commandDrift(
 /**
  * The application's settings as `commands/application.json` defines them
  * (`{origin}` is the service's public origin), and `GET /applications/@me`
- * answers them: the endpoints, the event types, the install link, guild
+ * answers them: the endpoints, the event types, no install link, guild
  * install only, the terms and privacy pages and the Bot page's two switches.
+ *
+ * No install link (`custom_install_url` and `install_params` null, the
+ * portal's Installation → Install Link set to None): Discord refuses a
+ * default authorization link on a private application ("Private application
+ * cannot have a default authorization link"), and the application is added
+ * only from Datalayer's Ship → Discord card, which opens
+ * `/discord/install?datalayer_bind=…`, and the service builds its own
+ * authorize URL from there. Discord leaves an unset field out of
+ * `GET /applications/@me`, so an absent field reads as null.
  */
 export const applicationSchema = z
   .object({
@@ -153,7 +162,8 @@ export const applicationSchema = z
     event_webhooks_status: z.literal(2),
     event_webhooks_types: z.array(z.string()).min(1),
     redirect_uris: z.array(z.string()).min(1),
-    custom_install_url: z.string(),
+    custom_install_url: z.null(),
+    install_params: z.null(),
     integration_types_config: z.record(z.string(), z.unknown()),
     terms_of_service_url: z.url(),
     privacy_policy_url: z.url(),
@@ -189,7 +199,8 @@ export function applicationDrift(
 ): string[] {
   return Object.entries(defined)
     .filter(
-      ([key, value]) => JSON.stringify(live[key]) !== JSON.stringify(value),
+      ([key, value]) =>
+        JSON.stringify(live[key] ?? null) !== JSON.stringify(value),
     )
     .map(
       ([key, value]) =>

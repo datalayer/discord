@@ -165,7 +165,8 @@ describe("the application's settings (DC-007)", () => {
       redirect_uris: [
         "https://discord-dev.datalayer.run/discord/oauth/callback",
       ],
-      custom_install_url: "https://discord-dev.datalayer.run/discord/install",
+      custom_install_url: null,
+      install_params: null,
       bot_public: false,
       bot_require_code_grant: true,
     });
@@ -204,8 +205,8 @@ describe("the application's settings (DC-007)", () => {
       redirect_uris: [
         "https://discord-dev.datalayer.run/discord/oauth/callback",
       ],
-      custom_install_url: "https://discord-dev.datalayer.run/discord/install",
-      install_params: null,
+      // No install link: Discord leaves custom_install_url and
+      // install_params out (19 October 2026).
       integration_types_config: { "0": {} },
       terms_of_service_url: "https://datalayer.ai/terms",
       privacy_policy_url: "https://datalayer.ai/privacy",
@@ -223,6 +224,20 @@ describe("the application's settings (DC-007)", () => {
         bot_require_code_grant: true,
       }),
     ).toEqual([]);
+    // A private application cannot keep a default authorization link: one
+    // set is drift.
+    expect(
+      applicationDrift(dev, {
+        ...live,
+        bot_public: false,
+        bot_require_code_grant: true,
+        custom_install_url: "https://discord-dev.datalayer.run/discord/install",
+        install_params: { scopes: ["bot"], permissions: "0" },
+      }),
+    ).toEqual([
+      'custom_install_url: "https://discord-dev.datalayer.run/discord/install", defined null',
+      'install_params: {"scopes":["bot"],"permissions":"0"}, defined null',
+    ]);
     expect(
       applicationDrift(dev, {
         ...live,

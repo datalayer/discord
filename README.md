@@ -41,7 +41,7 @@ Do the steps below once for each application. Keep every value you copy in a pas
 ### 4. Installation
 
 1. **Installation Contexts:** **Guild Install** only. Untick **User Install**.
-2. **Install Link:** **Custom URL**, `<DATALAYER_DISCORD_APP_URL>/discord/install` (`Datalayer Dev`: `https://discord-dev.datalayer.run`; the pilot: `https://discord.datalayer.run`; both run on r1 with cert-manager certificates; a tunnel origin only when you run the service on your own machine, step 7). A _Discord Provided Link_ cannot carry Datalayer's bind code, and _None_ would bar the App Directory later.
+2. **Install Link:** **None**. Discord refuses a default authorization link on a private application ("Private application cannot have a default authorization link"), and the application is added only from Datalayer's **Ship →** Discord card, which opens `<DATALAYER_DISCORD_APP_URL>/discord/install?datalayer_bind=…`; the service builds the authorize URL itself, with the bind code (step 10). `npm run commands:check` expects no install link (`custom_install_url` and `install_params` null).
 3. **Save Changes**.
 
 ### 5. OAuth2
@@ -116,15 +116,15 @@ Then set `DATALAYER_DISCORD_ENABLED=true` in `~/.datalayer/datalayerrc-r1` and r
 
 ### 8. Enter the endpoints
 
-Once the service answers on its host (`https://discord-dev.datalayer.run` for `Datalayer Dev`, `https://discord.datalayer.run` for the pilot; both run on r1 with Let's Encrypt certificates), open the application at [discord.com/developers/applications](https://discord.com/developers/applications) and fill these four fields, each followed by **Save Changes** (the green bar at the bottom):
+Once the service answers on its host (`https://discord-dev.datalayer.run` for `Datalayer Dev`, `https://discord.datalayer.run` for the pilot; both run on r1 with Let's Encrypt certificates), open the application at [discord.com/developers/applications](https://discord.com/developers/applications) and fill these three fields, each followed by **Save Changes** (the green bar at the bottom):
 
 | Left menu               | Field                                                                                | `Datalayer Dev`                                            | The pilot (`Datalayer`)                                |
 | ----------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------- | ------------------------------------------------------ |
 | **General Information** | **Interactions Endpoint URL**                                                        | `https://discord-dev.datalayer.run/discord/interactions`   | `https://discord.datalayer.run/discord/interactions`   |
 | **Webhooks**            | **Endpoint URL**, then switch **Events** on and tick **Application Authorized** only | `https://discord-dev.datalayer.run/discord/events`         | `https://discord.datalayer.run/discord/events`         |
 | **OAuth2**              | **Redirects → Add Redirect**                                                         | `https://discord-dev.datalayer.run/discord/oauth/callback` | `https://discord.datalayer.run/discord/oauth/callback` |
-| **Installation**        | **Install Link → Custom URL**                                                        | `https://discord-dev.datalayer.run/discord/install`        | `https://discord.datalayer.run/discord/install`        |
 
+- **Installation → Install Link** stays **None** (step 4): the install link is the service's `/discord/install`, opened from the Ship tab.
 - Discord saves the **Interactions Endpoint URL** only when the service answers its test: a PING it must answer, and a request with a bad signature it must refuse. If saving fails, the service is not running or its `DATALAYER_DISCORD_PUBLIC_KEY` is not this application's.
 - Discord also tests the **Webhooks** endpoint when events are switched on. _Application Deauthorized_ stays unticked: it names no server.
 - On the **Bot** page, check two switches: **Requires OAuth2 Code Grant** on (every install passes through `/discord/oauth/callback` and is bound to a Datalayer organization), and **Public Bot** off for `Datalayer Dev` (on for the pilot only when other servers may install it).
@@ -136,7 +136,7 @@ curl -sS -H "Authorization: Bot ${DATALAYER_DISCORD_BOT_TOKEN}" https://discord.
   | jq '{interactions_endpoint_url, event_webhooks_url, event_webhooks_status, event_webhooks_types, redirect_uris, custom_install_url, bot_require_code_grant, bot_public, integration_types_config}'
 ```
 
-Expected: the four URLs above, `event_webhooks_status: 2` (enabled) with `["APPLICATION_AUTHORIZED"]`, `bot_require_code_grant: true`, `bot_public: false` for `Datalayer Dev`, and `integration_types_config` with key `"0"` only (guild install). The webhook events can also be switched on from the bot token, if the portal toggle was missed:
+Expected: the three URLs above, `custom_install_url: null` (no install link), `event_webhooks_status: 2` (enabled) with `["APPLICATION_AUTHORIZED"]`, `bot_require_code_grant: true`, `bot_public: false` for `Datalayer Dev`, and `integration_types_config` with key `"0"` only (guild install). The webhook events can also be switched on from the bot token, if the portal toggle was missed:
 
 ```bash
 curl -sS -X PATCH -H "Authorization: Bot ${DATALAYER_DISCORD_BOT_TOKEN}" -H 'content-type: application/json' \
