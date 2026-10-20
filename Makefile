@@ -11,7 +11,10 @@
 #        (DC-403, migration 008; off until DATALAYER_DISCORD_DATABASE_ROLES),
 #        the settings check without an install link (DC-007).
 # 0.1.4: pushed 19 October 2026 (sha256:a837099fa946…), reupped on r1.
-VERSION ?= 0.1.4
+# 0.1.5: the first /ask after linking on the web answered in public with its
+#        thread (DC-104, migration 009: a pending link code makes the ingress
+#        ask Datalayer).
+VERSION ?= 0.1.5
 REGISTRY ?= $(DATALAYER_DOCKER_REGISTRY)
 EXPORT := $(HOME)/.cache/discord-export-$(shell git rev-parse --short HEAD)
 
