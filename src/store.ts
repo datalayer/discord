@@ -17,6 +17,13 @@ import type { NotificationMode } from "./render.js";
 
 export type InstallationState = "active" | "paused" | "removed";
 
+/**
+ * A member's link, as Datalayer last said, and until when a link code
+ * issued to them can still be confirmed there (epoch milliseconds): while
+ * pending and not linked, the cached status is not trusted.
+ */
+export type UserLink = Readonly<{ linked: boolean; pendingUntil?: number }>;
+
 export type Installation = Readonly<{
   applicationId: string;
   guildId: string;
@@ -112,16 +119,28 @@ export interface DiscordStore extends DeliveryClaimStore {
   /** Every row of a removed installation, gone (24 hours after removal). */
   purgeInstallation(applicationId: string, guildId: string): Promise<void>;
 
-  linked(
+  link(
     applicationId: string,
     guildId: string,
     userId: string,
-  ): Promise<boolean | undefined>;
+  ): Promise<UserLink | undefined>;
+  /** As Datalayer said: linked ends a pending code; not linked keeps it. */
   setLinked(
     applicationId: string,
     guildId: string,
     userId: string,
     linked: boolean,
+  ): Promise<void>;
+  /**
+   * A link code issued, confirmable until `until` (the row not linked); or,
+   * with `undefined`, settled: the code expired and Datalayer still says
+   * not linked.
+   */
+  setLinkPending(
+    applicationId: string,
+    guildId: string,
+    userId: string,
+    until: number | undefined,
   ): Promise<void>;
   /** The servers of an application where a person's link was ever recorded. */
   linkedGuilds(applicationId: string, userId: string): Promise<string[]>;
@@ -204,7 +223,7 @@ export interface DiscordStore extends DeliveryClaimStore {
 
 export class MemoryStore implements DiscordStore {
   readonly #installations = new Map<string, Installation>();
-  readonly #links = new Map<string, boolean>();
+  readonly #links = new Map<string, UserLink>();
   readonly #threads = new Map<string, ThreadBinding>();
   readonly #turns = new Map<
     string,
@@ -329,7 +348,7 @@ export class MemoryStore implements DiscordStore {
         this.#directChoices.delete(key);
   }
 
-  async linked(applicationId: string, guildId: string, userId: string) {
+  async link(applicationId: string, guildId: string, userId: string) {
     return this.#links.get(`${applicationId}:${guildId}:${userId}`);
   }
 
@@ -339,7 +358,28 @@ export class MemoryStore implements DiscordStore {
     userId: string,
     linked: boolean,
   ) {
-    this.#links.set(`${applicationId}:${guildId}:${userId}`, linked);
+    const key = `${applicationId}:${guildId}:${userId}`;
+    const pendingUntil = this.#links.get(key)?.pendingUntil;
+    this.#links.set(
+      key,
+      linked || pendingUntil === undefined
+        ? { linked }
+        : { linked, pendingUntil },
+    );
+  }
+
+  async setLinkPending(
+    applicationId: string,
+    guildId: string,
+    userId: string,
+    until: number | undefined,
+  ) {
+    const key = `${applicationId}:${guildId}:${userId}`;
+    const linked = this.#links.get(key)?.linked ?? false;
+    this.#links.set(
+      key,
+      until === undefined ? { linked } : { linked, pendingUntil: until },
+    );
   }
 
   async linkedGuilds(applicationId: string, userId: string) {

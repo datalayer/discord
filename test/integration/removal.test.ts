@@ -106,7 +106,7 @@ describe("removal (DC-107)", () => {
       await removal.store.installation(APPLICATION, GUILD),
     ).toBeUndefined();
     expect(
-      await removal.store.linked(APPLICATION, GUILD, id(11)),
+      await removal.store.link(APPLICATION, GUILD, id(11)),
     ).toBeUndefined();
   });
 

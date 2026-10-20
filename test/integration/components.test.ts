@@ -79,6 +79,7 @@ describe("components through the interaction handler (DC-207)", () => {
       "POST /discord/interactions": interactionsRoute({
         applicationId: APPLICATION,
         cipher: h.cipher,
+        hosts: h.hosts.client,
         logger: quietLogger(),
         now: () => h.clock.now(),
         publicKey: key.publicKey,

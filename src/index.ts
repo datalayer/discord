@@ -139,6 +139,7 @@ const routes: Routes =
           "POST /discord/interactions": interactionsRoute({
             applicationId: config.DATALAYER_DISCORD_APPLICATION_ID,
             cipher,
+            hosts,
             logger,
             publicKey: config.DATALAYER_DISCORD_PUBLIC_KEY,
             queue,

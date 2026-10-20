@@ -13,6 +13,7 @@ import type {
   InstallationState,
   ThreadBinding,
   TurnClaim,
+  UserLink,
 } from "./store.js";
 
 /** The memory store's behavior on PostgreSQL (`migrations/`). */
@@ -249,12 +250,23 @@ export class PostgresStore implements DiscordStore {
       ]);
   }
 
-  async linked(applicationId: string, guildId: string, userId: string) {
-    const { rows } = await this.database.query<{ linked: boolean }>(
-      "SELECT linked FROM discord_user_link WHERE application_id = $1 AND guild_id = $2 AND user_id = $3",
+  async link(
+    applicationId: string,
+    guildId: string,
+    userId: string,
+  ): Promise<UserLink | undefined> {
+    const { rows } = await this.database.query<{
+      linked: boolean;
+      pending_until: Date | null;
+    }>(
+      "SELECT linked, pending_until FROM discord_user_link WHERE application_id = $1 AND guild_id = $2 AND user_id = $3",
       [applicationId, guildId, userId],
     );
-    return rows[0]?.linked;
+    const row = rows[0];
+    if (!row) return undefined;
+    return row.pending_until
+      ? { linked: row.linked, pendingUntil: row.pending_until.getTime() }
+      : { linked: row.linked };
   }
 
   async setLinked(
@@ -267,8 +279,30 @@ export class PostgresStore implements DiscordStore {
       `INSERT INTO discord_user_link (application_id, guild_id, user_id, linked)
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (application_id, guild_id, user_id)
-       DO UPDATE SET linked = EXCLUDED.linked, updated_at = now()`,
+       DO UPDATE SET linked = EXCLUDED.linked,
+         pending_until = CASE WHEN EXCLUDED.linked THEN NULL ELSE discord_user_link.pending_until END,
+         updated_at = now()`,
       [applicationId, guildId, userId, linked],
+    );
+  }
+
+  async setLinkPending(
+    applicationId: string,
+    guildId: string,
+    userId: string,
+    until: number | undefined,
+  ) {
+    await this.database.query(
+      `INSERT INTO discord_user_link (application_id, guild_id, user_id, linked, pending_until)
+       VALUES ($1, $2, $3, false, $4)
+       ON CONFLICT (application_id, guild_id, user_id)
+       DO UPDATE SET pending_until = EXCLUDED.pending_until, updated_at = now()`,
+      [
+        applicationId,
+        guildId,
+        userId,
+        until === undefined ? null : new Date(until),
+      ],
     );
   }
 

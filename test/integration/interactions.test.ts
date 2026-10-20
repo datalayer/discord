@@ -16,13 +16,16 @@ import {
   ALICE,
   APPLICATION,
   CHANNEL,
+  FakeHosts,
   GUILD,
   id,
+  installation,
   quietLogger,
   serve,
   signingKey,
   testCipher,
 } from "../support/discord.js";
+import { harness } from "../support/worker.js";
 
 /**
  * The interactions endpoint on a real socket (DC-102):
@@ -72,14 +75,22 @@ describe("POST /discord/interactions (DC-102)", () => {
     close = undefined;
   });
 
-  async function endpoint(now = NOW) {
+  async function endpoint(
+    now = NOW,
+    shared: Partial<{
+      store: MemoryStore;
+      cipher: ReturnType<typeof testCipher>;
+      hosts: FakeHosts["client"];
+    }> = {},
+  ) {
     const queue = new RecordingQueue();
-    const store = new MemoryStore();
+    const store = shared.store ?? new MemoryStore();
     const lines: string[] = [];
     const served = await serve({
       "POST /discord/interactions": interactionsRoute({
         applicationId: APPLICATION,
-        cipher: testCipher(),
+        cipher: shared.cipher ?? testCipher(),
+        hosts: shared.hosts ?? new FakeHosts().client,
         logger: quietLogger(lines),
         now: () => now,
         publicKey: key.publicKey,
@@ -225,6 +236,96 @@ describe("POST /discord/interactions (DC-102)", () => {
     expect(await (await post(JSON.stringify(status))).json()).toEqual({
       data: { flags: EPHEMERAL },
       type: RESPONSE.deferredMessage,
+    });
+  });
+
+  it("answers in public, with its thread, the first /ask after a link confirmed on the web: a pending code makes the ingress ask Datalayer", async () => {
+    const store = new MemoryStore();
+    const cipher = testCipher();
+    const h = harness(store, undefined, cipher);
+    await store.saveInstallation(installation(cipher));
+    // /datalayer link: not linked at Datalayer, a code issued, the row
+    // written as not linked.
+    await h.worker.handle(
+      h.job({
+        command: { name: "datalayer", options: {}, subcommand: "link" },
+        ephemeral: true,
+        n: 800,
+      }),
+    );
+    expect(await store.link(APPLICATION, GUILD, ALICE)).toEqual({
+      linked: false,
+      pendingUntil: NOW + 600_000,
+    });
+    // Confirmed on datalayer.ai: ai-agents has the link, the row does not.
+    h.hosts.links.set(ALICE, "principal-alice");
+    const { post, queue } = await endpoint(NOW + 11_000, {
+      cipher,
+      hosts: h.hosts.client,
+      store,
+    });
+    const asked = await post(JSON.stringify(askCommand()));
+    expect(await asked.json()).toEqual({
+      data: {},
+      type: RESPONSE.deferredMessage,
+    });
+    expect(await store.link(APPLICATION, GUILD, ALICE)).toEqual({
+      linked: true,
+    });
+    const job = queue.jobs[0] as InteractionJob;
+    expect(job.ephemeral).toBe(false);
+    const before = h.port.bodies("editOriginal").length;
+    await h.worker.handle(job);
+    expect(h.port.count("startThread")).toBe(1);
+    const answer = h.port.bodies("editOriginal").slice(before);
+    expect(answer.length).toBeGreaterThan(0);
+    expect(answer.every((body) => body.flags !== EPHEMERAL)).toBe(true);
+  });
+
+  it("keeps a pending code's /ask private until Datalayer says linked, settles an expired one, and answers privately when Datalayer cannot say", async () => {
+    const hosts = new FakeHosts();
+    const cipher = testCipher();
+    const store = new MemoryStore();
+    await store.saveInstallation(installation(cipher));
+    await store.setLinked(APPLICATION, GUILD, ALICE, false);
+    await store.setLinkPending(APPLICATION, GUILD, ALICE, NOW + 600_000);
+    const ask = async (at: number, n: number, client = hosts.client) => {
+      const { lines, post } = await endpoint(at, {
+        cipher,
+        hosts: client,
+        store,
+      });
+      const answered = await post(JSON.stringify(askCommand({ id: id(n) })));
+      const body = (await answered.json()) as { data: unknown };
+      await close?.();
+      close = undefined;
+      return { body, lines };
+    };
+    // Not confirmed yet: private, still pending (a /datalayer status in
+    // between, which writes not linked, keeps it).
+    expect((await ask(NOW, 910)).body.data).toEqual({ flags: EPHEMERAL });
+    await store.setLinked(APPLICATION, GUILD, ALICE, false);
+    expect((await store.link(APPLICATION, GUILD, ALICE))?.pendingUntil).toBe(
+      NOW + 600_000,
+    );
+    // Datalayer down: private, said in the log, still pending.
+    const failing = await ask(NOW + 1_000, 911, {
+      ...hosts.client,
+      linkState: async () => {
+        throw new Error("Datalayer is down");
+      },
+    });
+    expect(failing.body.data).toEqual({ flags: EPHEMERAL });
+    expect(failing.lines.join("\n")).toContain("interaction.link_unchecked");
+    expect((await store.link(APPLICATION, GUILD, ALICE))?.pendingUntil).toBe(
+      NOW + 600_000,
+    );
+    // Expired unconfirmed: private, and settled.
+    expect((await ask(NOW + 600_000, 912)).body.data).toEqual({
+      flags: EPHEMERAL,
+    });
+    expect(await store.link(APPLICATION, GUILD, ALICE)).toEqual({
+      linked: false,
     });
   });
 

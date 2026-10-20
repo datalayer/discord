@@ -402,7 +402,7 @@ export class Worker {
     const { store, cipher } = this.deps;
     const candidates: Installation[] = [];
     for (const guildId of await store.linkedGuilds(applicationId, userId)) {
-      if ((await store.linked(applicationId, guildId, userId)) !== true)
+      if ((await store.link(applicationId, guildId, userId))?.linked !== true)
         continue;
       const one = await store.installation(applicationId, guildId);
       if (one && one.state !== "removed") candidates.push(one);
@@ -1323,7 +1323,19 @@ export class Worker {
         return say(
           "Your Datalayer account is linked here already. `/datalayer unlink` ends it.",
         );
-      const { code } = await hosts.linkCode(hostKey, job.userId, job.userName);
+      const { code, expiresIn } = await hosts.linkCode(
+        hostKey,
+        job.userId,
+        job.userName,
+      );
+      // Until the code expires the cached "not linked" is not trusted: the
+      // ingress asks Datalayer before deferring an /ask.
+      await store.setLinkPending(
+        installation.applicationId,
+        installation.guildId,
+        job.userId,
+        this.deps.clock.now() + expiresIn * 1000,
+      );
       return say(
         `Link your Datalayer account: ${webUrl.replace(/\/+$/, "")}/hosts/link?code=${encodeURIComponent(code)}\nSign in to Datalayer, check what it shows and confirm. The link works once, for ten minutes.`,
       );

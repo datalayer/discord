@@ -64,16 +64,24 @@ describe("/datalayer (DC-104, DC-106)", () => {
     expect(told(h)).toContain(
       `https://datalayer.ai/hosts/link?code=dlhc_test_${ALICE}`,
     );
+    // Pending for the code's ten minutes: the ingress asks Datalayer meanwhile.
+    expect(await h.store.link(APPLICATION, GUILD, ALICE)).toEqual({
+      linked: false,
+      pendingUntil: h.clock.now() + 600_000,
+    });
     h.hosts.links.set(ALICE, "principal-alice");
     await h.worker.handle(command(h, "datalayer", "link", { id: id(901) }));
     expect(told(h)).toContain("linked here already");
+    expect(await h.store.link(APPLICATION, GUILD, ALICE)).toEqual({
+      linked: true,
+    });
   });
 
   it("unlink ends the link at Datalayer and here", async () => {
     await h.worker.handle(command(h, "datalayer", "unlink"));
     expect(told(h)).toContain("unlinked");
     expect(h.hosts.unlinked).toEqual([ALICE]);
-    expect(await h.store.linked(APPLICATION, GUILD, ALICE)).toBe(false);
+    expect((await h.store.link(APPLICATION, GUILD, ALICE))?.linked).toBe(false);
     await h.worker.handle(command(h, "datalayer", "unlink", { id: id(902) }));
     expect(told(h)).toContain("was not linked");
   });
@@ -214,8 +222,8 @@ describe("/datalayer (DC-104, DC-106)", () => {
       /Discord records? naming you at Datalayer (is|are) deleted/,
     );
     expect(h.hosts.unlinked).toContain(ALICE);
-    expect(await h.store.linked(APPLICATION, GUILD, ALICE)).toBeUndefined();
-    expect(await h.store.linked(APPLICATION, GUILD, BOB)).toBe(true);
+    expect(await h.store.link(APPLICATION, GUILD, ALICE)).toBeUndefined();
+    expect((await h.store.link(APPLICATION, GUILD, BOB))?.linked).toBe(true);
   });
 
   it("forget unlinks the person at Datalayer in every server where a link was known, and forgets them in each, never in a removed one", async () => {
@@ -239,7 +247,7 @@ describe("/datalayer (DC-104, DC-106)", () => {
     expect(h.hosts.unlinked).toEqual([ALICE, ALICE]);
     expect(h.hosts.unlinkedKeys).toHaveLength(2);
     expect(await h.store.linkedGuilds(APPLICATION, ALICE)).toEqual([]);
-    expect(await h.store.linked(APPLICATION, other, BOB)).toBe(true);
+    expect((await h.store.link(APPLICATION, other, BOB))?.linked).toBe(true);
   });
 
   it("start-over and app are refused to an unlinked person and to anyone but the thread's opener", async () => {

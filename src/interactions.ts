@@ -1,5 +1,6 @@
 import {
   usableAllowances,
+  type DatalayerHostClient,
   type EncryptedSecret,
   type Logger,
   type SecretCipher,
@@ -9,7 +10,7 @@ import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
 
-import { DIRECT, type ThreadKey } from "./domain.js";
+import { DIRECT, externalIdOf, type ThreadKey } from "./domain.js";
 import { EPHEMERAL, NO_MENTIONS } from "./render.js";
 import type { DiscordJob } from "./resources.js";
 import type { DiscordStore } from "./store.js";
@@ -22,8 +23,13 @@ import { BodyTooLargeError, rawBodyOf, signedByDiscord } from "./verify.js";
  * transaction, and answer inline within three seconds — a deferral whose
  * ephemeral state is decided here, a modal, autocomplete from the cache, or,
  * when nothing could be persisted, an ephemeral refusal (Discord does not
- * retry an interaction). No network call is made before answering.
+ * retry an interaction). One network call at most before answering: an
+ * /ask by a member whose link code is pending asks Datalayer whether they
+ * are linked now, since the cached status was written before they confirmed.
  */
+
+/** How long the ingress waits for Datalayer's link status: Discord waits three seconds in all. */
+export const LINK_CHECK_MS = 1_500;
 
 /** Interaction types (Discord). */
 const PING = 1;
@@ -315,6 +321,8 @@ export type InteractionDependencies = Readonly<{
   queue: WorkQueue<DiscordJob>;
   store: DiscordStore;
   cipher: SecretCipher;
+  /** The link's record, asked only while a member's link code is pending. */
+  hosts: Pick<DatalayerHostClient, "linkState">;
   logger: Logger;
   /** Now, in milliseconds. */
   now?: () => number;
@@ -359,6 +367,59 @@ export function interactionsRoute(dependencies: InteractionDependencies) {
       return send(400, { error: "another application's interaction" });
     send(200, await answerOf(parsed, dependencies, now));
   };
+}
+
+/**
+ * Whether a member is linked, for an /ask's deferral: the cached status,
+ * unless a link code issued to them is pending and the cache says not
+ * linked — the member may have confirmed on the web since the row was
+ * written, so ai-agents is asked and the row updated. A pending code that
+ * expired unconfirmed is settled. Not linked when unknown, unreadable or
+ * not answered in time: the answer is then private.
+ */
+async function linkedNow(
+  key: ThreadKey,
+  userId: string,
+  dependencies: InteractionDependencies,
+  now: () => number,
+): Promise<boolean> {
+  const { store, cipher, hosts, logger } = dependencies;
+  const { applicationId, guildId } = key;
+  const installationId = externalIdOf(applicationId, guildId);
+  try {
+    const link = await store.link(applicationId, guildId, userId);
+    if (link?.linked === true) return true;
+    if (link?.pendingUntil === undefined) return false;
+    const installation = await store.installation(applicationId, guildId);
+    if (!installation || installation.state === "removed") return false;
+    const hostKey = cipher.decrypt(installation.hostKey, installationId);
+    let timer: NodeJS.Timeout | undefined;
+    const state = await Promise.race([
+      hosts.linkState(hostKey, userId),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Datalayer did not say in time")),
+          LINK_CHECK_MS,
+        );
+      }),
+    ]).finally(() => clearTimeout(timer));
+    if (state.linked) {
+      await store.setLinked(applicationId, guildId, userId, true);
+      logger.info("interaction.link_confirmed", {
+        installation: installationId,
+      });
+      return true;
+    }
+    if (link.pendingUntil <= now())
+      await store.setLinkPending(applicationId, guildId, userId, undefined);
+    return false;
+  } catch (error) {
+    logger.warn("interaction.link_unchecked", {
+      error,
+      installation: installationId,
+    });
+    return false;
+  }
 }
 
 /** The inline answer to a verified interaction, after its job is kept. */
@@ -453,14 +514,12 @@ async function answerOf(
   if (interaction.type === APPLICATION_COMMAND) {
     command = { name: data.name ?? "", ...optionsOf(data.options) };
     if (command.name === "ask") {
-      const linked = await store
-        .linked(key.applicationId, key.guildId, person.id)
-        .catch(() => undefined);
       // Public only in a server, for a linked person who did not ask for
       // privacy; Discord keeps the deferral's ephemeral state.
       ephemeral =
         key.guildId !== DIRECT &&
-        (command.options.private === true || linked !== true);
+        (command.options.private === true ||
+          !(await linkedNow(key, person.id, dependencies, now)));
     } else if (
       command.name !== "datalayer" &&
       command.name !== "datalayer-admin"

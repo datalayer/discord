@@ -130,6 +130,31 @@ function contract(name: string, make: () => Promise<DiscordStore>) {
       expect(await store.spendState("n2", later(2000))).toBeUndefined();
     });
 
+    it("keeps a link code pending until linked or settled: not linked keeps it, linked ends it", async () => {
+      const store = await make();
+      const until = Date.UTC(2026, 9, 20, 6, 3, 21);
+      await store.setLinked(APPLICATION, GUILD, ALICE, false);
+      await store.setLinkPending(APPLICATION, GUILD, ALICE, until);
+      expect(await store.link(APPLICATION, GUILD, ALICE)).toEqual({
+        linked: false,
+        pendingUntil: until,
+      });
+      await store.setLinked(APPLICATION, GUILD, ALICE, false);
+      expect(await store.link(APPLICATION, GUILD, ALICE)).toEqual({
+        linked: false,
+        pendingUntil: until,
+      });
+      await store.setLinkPending(APPLICATION, GUILD, ALICE, undefined);
+      expect(await store.link(APPLICATION, GUILD, ALICE)).toEqual({
+        linked: false,
+      });
+      await store.setLinkPending(APPLICATION, GUILD, BOB, until);
+      await store.setLinked(APPLICATION, GUILD, BOB, true);
+      expect(await store.link(APPLICATION, GUILD, BOB)).toEqual({
+        linked: true,
+      });
+    });
+
     it("forgets a person in every server: their links and components deleted, the threads they opened and the presses they answered no longer naming them", async () => {
       const store = await make();
       const cipher = testCipher();
@@ -196,10 +221,10 @@ function contract(name: string, make: () => Promise<DiscordStore>) {
       expect(await store.forgetUser(APPLICATION, ALICE)).toBe(6);
       expect(await store.component("render-0004")).toBeUndefined();
       expect((await store.component("render-0005"))?.ownerId).toBe(BOB);
-      expect(await store.linked(APPLICATION, GUILD, ALICE)).toBeUndefined();
-      expect(await store.linked(APPLICATION, other, ALICE)).toBeUndefined();
+      expect(await store.link(APPLICATION, GUILD, ALICE)).toBeUndefined();
+      expect(await store.link(APPLICATION, other, ALICE)).toBeUndefined();
       expect(await store.linkedGuilds(APPLICATION, ALICE)).toEqual([]);
-      expect(await store.linked(APPLICATION, GUILD, BOB)).toBe(true);
+      expect((await store.link(APPLICATION, GUILD, BOB))?.linked).toBe(true);
       expect((await store.thread("t2"))?.openedBy).toBeUndefined();
       expect(await store.component("render-0002")).toBeUndefined();
       const answered = await store.component("render-0003");
@@ -337,7 +362,7 @@ function contract(name: string, make: () => Promise<DiscordStore>) {
       ).toBe(now.getTime());
       await store.purgeInstallation(APPLICATION, GUILD);
       expect(await store.installation(APPLICATION, GUILD)).toBeUndefined();
-      expect(await store.linked(APPLICATION, GUILD, ALICE)).toBeUndefined();
+      expect(await store.link(APPLICATION, GUILD, ALICE)).toBeUndefined();
       expect(await store.thread("t3")).toBeUndefined();
     });
   });
