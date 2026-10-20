@@ -1,8 +1,9 @@
-# Threat model (draft)
+# Threat model
 
-Status: draft, 16 October 2026 (DC-003). It is signed off by
-the user, as security and privacy owner, before a real bot token is stored in
-the `datalayer-discord-env` Secret. Not signed off.
+Status: signed off on 20 October 2026 by the security and privacy owner, as
+it stands (DC-003; drafted 16 October 2026). The production application's bot
+token was stored in the `datalayer-discord-env` Secret earlier the same day,
+before the sign-off, not after it as this document first required.
 
 ## Data flow
 
@@ -117,5 +118,5 @@ What it allows and requires of this service:
   only in answer to the person, or for a decision that waits on them); a way
   to report problems with the application (`/docs/discord` §10).
 
-Left for the owner's sign-off: that Datalayer's model-provider agreements
+Taken by the owner's sign-off (20 October 2026), as it stands: that Datalayer's model-provider agreements
 carry the §12(a) terms, and the privacy policy's Discord paragraph.
