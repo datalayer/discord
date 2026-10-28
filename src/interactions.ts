@@ -328,13 +328,44 @@ export type InteractionDependencies = Readonly<{
   now?: () => number;
 }>;
 
-/** The interactions endpoint as a Node request handler. */
+/** Which application an interactions request is for, and the key it is verified with. */
+export type InteractionApplication = Readonly<{
+  applicationId: string;
+  publicKey: string;
+}>;
+
+/** The interactions endpoint of Datalayer's own application, as a Node request handler. */
 export function interactionsRoute(dependencies: InteractionDependencies) {
+  const own: InteractionApplication = {
+    applicationId: dependencies.applicationId,
+    publicKey: dependencies.publicKey,
+  };
+  return interactionsFor(dependencies, async () => own);
+}
+
+/**
+ * An interactions endpoint whose application is resolved per request (a
+ * custom application's, by the id in the path: `custom-apps.ts`), or is
+ * Datalayer's own. Unresolved: 404, before any body is read.
+ */
+export function interactionsFor(
+  dependencies: Omit<InteractionDependencies, "applicationId" | "publicKey">,
+  resolve: (
+    request: IncomingMessage & { params?: Record<string, string> },
+  ) => Promise<InteractionApplication | undefined>,
+) {
   const now = dependencies.now ?? Date.now;
   return async (
-    request: IncomingMessage,
+    request: IncomingMessage & { params?: Record<string, string> },
     response: ServerResponse,
   ): Promise<void> => {
+    const application = await resolve(request);
+    if (!application) {
+      request.resume();
+      response.writeHead(404, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "no such application" }));
+      return;
+    }
     const send = (status: number, body?: unknown) => {
       response.writeHead(status, { "content-type": "application/json" });
       response.end(body === undefined ? undefined : JSON.stringify(body));
@@ -351,7 +382,7 @@ export function interactionsRoute(dependencies: InteractionDependencies) {
       !(await signedByDiscord(
         request,
         rawBody,
-        dependencies.publicKey,
+        application.publicKey,
         Math.floor(now() / 1000),
       ))
     )
@@ -363,9 +394,9 @@ export function interactionsRoute(dependencies: InteractionDependencies) {
       return send(400, { error: "not an interaction" });
     }
     if (parsed.type === PING) return send(200, { type: RESPONSE.pong });
-    if (parsed.application_id !== dependencies.applicationId)
+    if (parsed.application_id !== application.applicationId)
       return send(400, { error: "another application's interaction" });
-    send(200, await answerOf(parsed, dependencies, now));
+    send(200, await answerOf(parsed, { ...dependencies, ...application }, now));
   };
 }
 

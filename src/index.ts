@@ -12,6 +12,15 @@ import {
 
 import { httpAsPerson } from "./as-person.js";
 import { readConfig } from "./config.js";
+import {
+  ApplicationPorts,
+  commandDefinitions,
+  CustomGateways,
+  customInstallRoutes,
+  customInteractionsRoute,
+  CUSTOM_INTERACTIONS_ROUTE,
+  httpDiscordAppPort,
+} from "./custom-apps.js";
 import { deliverySinkOf, type DeliveryQueueJob } from "./deliveries.js";
 import { HttpDiscordPort } from "./discord-port.js";
 import {
@@ -60,6 +69,18 @@ const port = new HttpDiscordPort(
     clientSecret: config.DATALAYER_DISCORD_CLIENT_SECRET,
   },
   limiter,
+);
+// One port per application: Datalayer's own, and each custom application's
+// over its bot token; the worker's port posts as the application in hand.
+const ports = new ApplicationPorts(
+  { applicationId: config.DATALAYER_DISCORD_APPLICATION_ID, port },
+  store,
+  cipher,
+  (settings) =>
+    new HttpDiscordPort(
+      { ...settings, clientSecret: config.DATALAYER_DISCORD_CLIENT_SECRET },
+      limiter,
+    ),
 );
 const hosts = new DatalayerHostClient(config.DATALAYER_API_URL);
 const hostKeyFor = async (request: { provenance: DiscordTurn }) => {
@@ -150,6 +171,25 @@ const routes: Routes =
             deliverySinkOf(store, cipher),
             enqueueDelivery,
           ),
+          // The applications people bring (custom-apps.ts): their install
+          // from the Ship card, and each one's interactions by its id.
+          ...customInstallRoutes({
+            appUrl: config.DATALAYER_DISCORD_APP_URL,
+            cipher,
+            commands: commandDefinitions,
+            hosts,
+            logger,
+            port: httpDiscordAppPort(),
+            store,
+            webUrl: config.DATALAYER_WEB_URL,
+          }),
+          [`POST ${CUSTOM_INTERACTIONS_ROUTE}`]: customInteractionsRoute({
+            cipher,
+            hosts,
+            logger,
+            queue,
+            store,
+          }),
         };
       })();
 
@@ -198,6 +238,34 @@ if (role === "gateway" || role === "all") {
   gateway.start();
 }
 
+// One gateway connection per custom application beside Datalayer's own,
+// reconciled from the store every minute (custom-apps.ts).
+let customGateways: CustomGateways | undefined;
+if (role === "gateway" || role === "all") {
+  customGateways = new CustomGateways({
+    cipher,
+    enqueue: (job, key) => queue.enqueue(job, key),
+    forget: (applicationId) => ports.forget(applicationId),
+    hosts,
+    lockOf: (applicationId) =>
+      config.DATABASE_URL
+        ? new PostgresLeaderLock(
+            config.DATABASE_URL,
+            `discord-gateway:${applicationId}`,
+          )
+        : {
+            acquire: async () => true,
+            held: async () => true,
+            release: async () => undefined,
+          },
+    logger,
+    socket: webSocket,
+    store,
+    timers: systemTimers,
+  });
+  customGateways.start();
+}
+
 const timers: NodeJS.Timeout[] = [];
 let stopPoller = (): void => {};
 if (role === "worker" || role === "all") {
@@ -211,7 +279,8 @@ if (role === "worker" || role === "all") {
     limits: DEFAULT_QUOTAS,
     logger,
     openLink,
-    port,
+    port: ports.contextPort(),
+    ports,
     quotas: resources.quotas,
     removed: (guildId) => removeInstallation(removal, guildId, "unknown-guild"),
     store,
@@ -270,6 +339,7 @@ const close = async (): Promise<void> => {
   timers.forEach(clearInterval);
   stopPoller();
   await gateway?.stop();
+  await customGateways?.stop();
   server.close();
   await resources.close();
   logger.info("service.stopped", { role });

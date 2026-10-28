@@ -40,6 +40,25 @@ export type Installation = Readonly<{
   removedAt?: Date;
 }>;
 
+/**
+ * A Discord application the person brings (decided 28 October 2026): their
+ * own application, installed from a Datalayer application's Ship tab. Its
+ * installations are `Installation`s like any (keyed by its application id);
+ * this is what only a custom application has: the public key the service
+ * verifies its interactions with, and its bot token, encrypted at rest and
+ * bound to `custom-app:<application_id>`.
+ */
+export type CustomApp = Readonly<{
+  applicationId: string;
+  publicKey: string;
+  botToken: EncryptedSecret;
+  createdAt?: Date;
+}>;
+
+/** What a custom application's bot token is bound to (its associated data). */
+export const customAppData = (applicationId: string): string =>
+  `custom-app:${applicationId}`;
+
 export type ThreadBinding = Readonly<{
   threadKey: string;
   applicationId: string;
@@ -116,6 +135,11 @@ export interface DiscordStore extends DeliveryClaimStore {
     mode: NotificationMode,
   ): Promise<boolean>;
   installations(state?: InstallationState): Promise<Installation[]>;
+  /** A custom application the person brought, by its id: its public key and bot token. */
+  customApp(applicationId: string): Promise<CustomApp | undefined>;
+  saveCustomApp(app: CustomApp): Promise<void>;
+  customApps(): Promise<CustomApp[]>;
+  deleteCustomApp(applicationId: string): Promise<void>;
   /** Every row of a removed installation, gone (24 hours after removal). */
   purgeInstallation(applicationId: string, guildId: string): Promise<void>;
 
@@ -223,6 +247,7 @@ export interface DiscordStore extends DeliveryClaimStore {
 
 export class MemoryStore implements DiscordStore {
   readonly #installations = new Map<string, Installation>();
+  readonly #customApps = new Map<string, CustomApp>();
   readonly #links = new Map<string, UserLink>();
   readonly #threads = new Map<string, ThreadBinding>();
   readonly #turns = new Map<
@@ -327,6 +352,25 @@ export class MemoryStore implements DiscordStore {
     return [...this.#installations.values()].filter(
       (one) => !state || one.state === state,
     );
+  }
+
+  async customApp(applicationId: string) {
+    return this.#customApps.get(applicationId);
+  }
+
+  async saveCustomApp(app: CustomApp) {
+    this.#customApps.set(app.applicationId, {
+      ...app,
+      createdAt: app.createdAt ?? new Date(),
+    });
+  }
+
+  async customApps() {
+    return [...this.#customApps.values()];
+  }
+
+  async deleteCustomApp(applicationId: string) {
+    this.#customApps.delete(applicationId);
   }
 
   async purgeInstallation(applicationId: string, guildId: string) {

@@ -6,6 +6,7 @@ import type {
 import type { GatewaySession } from "./gateway.js";
 import type { NotificationMode } from "./render.js";
 import type {
+  CustomApp,
   Allowance,
   ComponentRow,
   DiscordStore,
@@ -31,6 +32,20 @@ type InstallationRow = {
   delivery_secret: EncryptedSecret | null;
   removed_at: Date | null;
 };
+
+type CustomAppRow = {
+  application_id: string;
+  public_key: string;
+  bot_token: EncryptedSecret;
+  created_at: Date;
+};
+
+const customAppOf = (row: CustomAppRow): CustomApp => ({
+  applicationId: row.application_id,
+  botToken: row.bot_token,
+  createdAt: row.created_at,
+  publicKey: row.public_key,
+});
 
 const installationOf = (row: InstallationRow): Installation => ({
   applicationId: row.application_id,
@@ -222,6 +237,39 @@ export class PostgresStore implements DiscordStore {
       [applicationId, guildId, state, at],
     );
     return rowCount === 1;
+  }
+
+  async customApp(applicationId: string) {
+    const { rows } = await this.database.query<CustomAppRow>(
+      "SELECT * FROM discord_custom_app WHERE application_id = $1",
+      [applicationId],
+    );
+    return rows[0] ? customAppOf(rows[0]) : undefined;
+  }
+
+  async saveCustomApp(app: CustomApp) {
+    await this.database.query(
+      `INSERT INTO discord_custom_app (application_id, public_key, bot_token, created_at)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (application_id) DO UPDATE SET
+         public_key = EXCLUDED.public_key,
+         bot_token = EXCLUDED.bot_token`,
+      [app.applicationId, app.publicKey, app.botToken, app.createdAt ?? new Date()],
+    );
+  }
+
+  async customApps() {
+    const { rows } = await this.database.query<CustomAppRow>(
+      "SELECT * FROM discord_custom_app ORDER BY created_at",
+    );
+    return rows.map(customAppOf);
+  }
+
+  async deleteCustomApp(applicationId: string) {
+    await this.database.query(
+      "DELETE FROM discord_custom_app WHERE application_id = $1",
+      [applicationId],
+    );
   }
 
   async installations(state?: InstallationState) {

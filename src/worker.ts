@@ -136,6 +136,14 @@ export type WorkerDependencies = Readonly<{
   instance?: string;
   /** A server Discord says is unknown: removed (`removal.ts`). */
   removed?: (guildId: string) => Promise<unknown>;
+  /**
+   * Which application a job is handled as (`custom-apps.ts`): `port` then
+   * posts with that application's bot token. Absent, every job is
+   * Datalayer's own application's.
+   */
+  ports?: {
+    within<T>(applicationId: string, work: () => Promise<T>): Promise<T>;
+  };
 }>;
 
 export { secretBearing };
@@ -182,20 +190,38 @@ export class Worker {
   }
 
   async handle(job: Readonly<{ kind: string }>): Promise<void> {
+    const work = async (): Promise<void> => {
+      if (job.kind === "interaction")
+        return this.interaction(job as InteractionJob);
+      if (job.kind === "delivery")
+        return this.deliveries.receive(job as DeliveryQueueJob);
+      if (job.kind === "message") return this.message(job as MessageJob);
+      if (job.kind === "event") {
+        await handleEvent(job as EventJob, {
+          applicationId: this.deps.applicationId,
+          logger: this.deps.logger,
+          store: this.deps.store,
+        });
+        return;
+      }
+      throw new Error(`A job of an unknown kind: ${job.kind}`);
+    };
+    if (!this.deps.ports) return work();
+    return this.deps.ports.within(await this.#applicationOf(job), work);
+  }
+
+  /** The application a job belongs to: Datalayer's own unless the job names another. */
+  async #applicationOf(job: Readonly<{ kind: string }>): Promise<string> {
     if (job.kind === "interaction")
-      return this.interaction(job as InteractionJob);
-    if (job.kind === "delivery")
-      return this.deliveries.receive(job as DeliveryQueueJob);
-    if (job.kind === "message") return this.message(job as MessageJob);
-    if (job.kind === "event") {
-      await handleEvent(job as EventJob, {
-        applicationId: this.deps.applicationId,
-        logger: this.deps.logger,
-        store: this.deps.store,
-      });
-      return;
+      return (job as InteractionJob).key.applicationId;
+    if (job.kind === "message") return (job as MessageJob).applicationId;
+    if (job.kind === "delivery") {
+      const installation = await this.deps.store.installationByHost(
+        (job as DeliveryQueueJob).hostUid,
+      );
+      return installation?.applicationId ?? this.deps.applicationId;
     }
-    throw new Error(`A job of an unknown kind: ${job.kind}`);
+    return this.deps.applicationId;
   }
 
   async interaction(job: InteractionJob): Promise<void> {
@@ -271,7 +297,7 @@ export class Worker {
       externalIdOf(installation.applicationId, installation.guildId),
     );
     const prompt = job.content
-      .replace(new RegExp(`<@!?${this.deps.applicationId}>`, "g"), "")
+      .replace(new RegExp(`<@!?${job.applicationId}>`, "g"), "")
       .trim();
     // Said once per message, whatever redelivers it.
     const reply = async (text: string) => {

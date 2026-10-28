@@ -14,7 +14,12 @@
 # 0.1.5: the first /ask after linking on the web answered in public with its
 #        thread (DC-104, migration 009: a pending link code makes the ingress
 #        ask Datalayer).
-VERSION ?= 0.1.5
+# 0.1.6: a Discord application the person brings (decided 28 October 2026): POST /discord/apps/install from the
+#        Ship card (application id, public key, bot token, the server among the bot's guilds; the commands
+#        registered on it; bound at Datalayer as a custom installation), its interactions at
+#        /discord/interactions/<application_id> verified with its own key, posted as its own bot, heard on
+#        its own gateway connection (migration 010, discord_custom_app; commands/ shipped in the image).
+VERSION ?= 0.1.6
 REGISTRY ?= $(DATALAYER_DOCKER_REGISTRY)
 EXPORT := $(HOME)/.cache/discord-export-$(shell git rev-parse --short HEAD)
 

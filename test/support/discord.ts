@@ -226,6 +226,7 @@ export class FakeHosts {
   self: HostSelf = {
     accountUid: "account-1",
     channels: [],
+    uid: "host-1",
     defaultDeployment: "deployment-1",
     deployments: [
       { appName: "Analyst", kept: true, uid: "deployment-1" },
