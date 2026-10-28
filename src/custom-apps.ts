@@ -295,7 +295,9 @@ export async function installCustomApp(
       : undefined;
   if (!guild)
     return {
-      error: request.guild_id ? CUSTOM_WORDS.notThatGuild : CUSTOM_WORDS.whichGuild,
+      error: request.guild_id
+        ? CUSTOM_WORDS.notThatGuild
+        : CUSTOM_WORDS.whichGuild,
       ok: false,
     };
   try {
@@ -315,8 +317,10 @@ export async function installCustomApp(
   try {
     bound = await hosts.bind({
       code: request.bind_code,
+      customAppId: application.id,
       externalId,
       name: guild.name,
+      provider: "custom",
     });
   } catch (error) {
     if (!(error instanceof HostRefusedError)) throw error;
@@ -364,7 +368,10 @@ export async function installCustomApp(
   logger.info("custom_install.bound", { installation: externalId });
   return {
     hostUid: bound.hostUid,
-    interactionsUrl: customInteractionsUrlOf(dependencies.appUrl, application.id),
+    interactionsUrl: customInteractionsUrlOf(
+      dependencies.appUrl,
+      application.id,
+    ),
     name: guild.name,
     ok: true,
   };
@@ -462,7 +469,10 @@ export function customInteractionsRoute(
 
 // --- posting as the right bot ----------------------------------------------------
 
-export type PortSettings = Readonly<{ applicationId: string; botToken: string }>;
+export type PortSettings = Readonly<{
+  applicationId: string;
+  botToken: string;
+}>;
 
 /**
  * One Discord port per application: Datalayer's own, and one over each
@@ -526,12 +536,15 @@ export class ApplicationPorts {
       botGuilds: async (after) => (await port()).botGuilds(after),
       channel: async (channelId): Promise<ChannelView> =>
         (await port()).channel(channelId),
-      createMessage: async (channelId, body: MessageBody): Promise<SentMessage> =>
-        (await port()).createMessage(channelId, body),
+      createMessage: async (
+        channelId,
+        body: MessageBody,
+      ): Promise<SentMessage> => (await port()).createMessage(channelId, body),
       deleteOriginal: async (token) => (await port()).deleteOriginal(token),
       editMessage: async (channelId, messageId, body) =>
         (await port()).editMessage(channelId, messageId, body),
-      editOriginal: async (token, body) => (await port()).editOriginal(token, body),
+      editOriginal: async (token, body) =>
+        (await port()).editOriginal(token, body),
       followUp: async (token, body) => (await port()).followUp(token, body),
       guildName: async (guildId) => (await port()).guildName(guildId),
       original: async (token) => (await port()).original(token),
@@ -660,7 +673,8 @@ export class CustomGateways {
       logger: deps.logger,
       sessions: {
         load: () => deps.store.gatewaySession(applicationId),
-        save: (session) => deps.store.saveGatewaySession(applicationId, session),
+        save: (session) =>
+          deps.store.saveGatewaySession(applicationId, session),
       },
       socket: deps.socket,
       timers: deps.timers,

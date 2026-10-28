@@ -91,6 +91,7 @@ describe("/discord/install and /discord/oauth/callback (DC-103)", () => {
         code: "dlhb_bind_code_1",
         externalId: `${APPLICATION}:${GUILD}`,
         name: "Test",
+        provider: "datalayer",
       },
     ]);
     const kept = await store.installation(APPLICATION, GUILD);

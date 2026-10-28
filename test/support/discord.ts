@@ -220,7 +220,12 @@ export class FakeHosts {
   unlinked: string[] = [];
   /** The host key each unlink was made with: which installation it ended. */
   unlinkedKeys: string[] = [];
-  bound: Array<{ code: string; externalId: string }> = [];
+  bound: Array<{
+    code: string;
+    externalId: string;
+    provider: string;
+    customAppId?: string;
+  }> = [];
   spentCodes = new Set<string>();
   uninstalledKeys: string[] = [];
   self: HostSelf = {
@@ -249,7 +254,12 @@ export class FakeHosts {
     this.unlinkedKeys.push(hostKey);
     return had ? 1 : 0;
   }
-  async bind(input: { code: string; externalId: string }) {
+  async bind(input: {
+    code: string;
+    externalId: string;
+    provider: string;
+    customAppId?: string;
+  }) {
     if (this.spentCodes.has(input.code))
       throw new HostRefusedError(
         410,
@@ -343,7 +353,12 @@ export class FakeHosts {
         channel?: { id: string; state: "allow" | "deny" };
       },
     ) => this.admin(hostKey, user, change),
-    bind: (input: { code: string; externalId: string }) => this.bind(input),
+    bind: (input: {
+      code: string;
+      externalId: string;
+      provider: string;
+      customAppId?: string;
+    }) => this.bind(input),
     linkCode: (hostKey: string, user: string) => this.linkCode(hostKey, user),
     linkState: (hostKey: string, user: string) => this.linkState(hostKey, user),
     self: async () => this.self,

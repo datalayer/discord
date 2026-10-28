@@ -50,18 +50,32 @@ const WEB = "https://datalayer.ai";
 class FakeAppPort implements DiscordAppPort {
   applicationId = CUSTOM;
   verifyKey = KEY.publicKey;
-  guildList: Array<{ id: string; name: string }> = [{ id: GUILD, name: "Acme" }];
+  guildList: Array<{ id: string; name: string }> = [
+    { id: GUILD, name: "Acme" },
+  ];
   refuseToken = false;
   refuseCommands = false;
-  registered: Array<{ applicationId: string; commands: readonly CommandDefinition[] }> = [];
+  registered: Array<{
+    applicationId: string;
+    commands: readonly CommandDefinition[];
+  }> = [];
   async application(token: string) {
-    if (this.refuseToken || token !== TOKEN) throw new Error("Discord answered 401");
-    return { id: this.applicationId, name: "Acme Bot", verifyKey: this.verifyKey };
+    if (this.refuseToken || token !== TOKEN)
+      throw new Error("Discord answered 401");
+    return {
+      id: this.applicationId,
+      name: "Acme Bot",
+      verifyKey: this.verifyKey,
+    };
   }
   async guilds() {
     return this.guildList;
   }
-  async registerCommands(_token: string, applicationId: string, commands: readonly CommandDefinition[]) {
+  async registerCommands(
+    _token: string,
+    applicationId: string,
+    commands: readonly CommandDefinition[],
+  ) {
     if (this.refuseCommands) throw new Error("Discord answered 403");
     this.registered.push({ applicationId, commands });
   }
@@ -107,9 +121,21 @@ describe("installing a custom Discord application from the Ship card", () => {
       name: "Acme",
       ok: true,
     });
-    expect(deps.hostsFake.bound).toEqual([{ code: CODE, externalId: `${CUSTOM}:${GUILD}`, name: "Acme" }]);
-    expect(deps.port.registered).toEqual([{ applicationId: CUSTOM, commands: COMMANDS }]);
-    expect(deps.hostsFake.webhooks).toEqual([{ hostKey: "dlhk_test_1", url: `${APP_URL}/datalayer/deliveries/host-1` }]);
+    expect(deps.hostsFake.bound).toEqual([
+      {
+        code: CODE,
+        customAppId: CUSTOM,
+        externalId: `${CUSTOM}:${GUILD}`,
+        name: "Acme",
+        provider: "custom",
+      },
+    ]);
+    expect(deps.port.registered).toEqual([
+      { applicationId: CUSTOM, commands: COMMANDS },
+    ]);
+    expect(deps.hostsFake.webhooks).toEqual([
+      { hostKey: "dlhk_test_1", url: `${APP_URL}/datalayer/deliveries/host-1` },
+    ]);
     const installation = await deps.store.installation(CUSTOM, GUILD);
     expect(installation).toMatchObject({
       applicationId: CUSTOM,
@@ -120,10 +146,14 @@ describe("installing a custom Discord application from the Ship card", () => {
       permissions: permissionsInteger(),
       state: "active",
     });
-    expect(deps.cipher.decrypt(installation!.hostKey, `${CUSTOM}:${GUILD}`)).toBe("dlhk_test_1");
+    expect(
+      deps.cipher.decrypt(installation!.hostKey, `${CUSTOM}:${GUILD}`),
+    ).toBe("dlhk_test_1");
     const app = await deps.store.customApp(CUSTOM);
     expect(app?.publicKey).toBe(KEY.publicKey);
-    expect(deps.cipher.decrypt(app!.botToken, customAppData(CUSTOM))).toBe(TOKEN);
+    expect(deps.cipher.decrypt(app!.botToken, customAppData(CUSTOM))).toBe(
+      TOKEN,
+    );
     expect(JSON.stringify(app)).not.toContain(TOKEN);
     expect(customAuthorizeUrlOf(CUSTOM)).toBe(
       `https://discord.com/oauth2/authorize?client_id=${CUSTOM}&integration_type=0&permissions=${permissionsInteger()}&scope=bot+applications.commands`,
@@ -133,12 +163,20 @@ describe("installing a custom Discord application from the Ship card", () => {
   it("refuses a token Discord refuses, another application's token, a key that is not the application's, keeping nothing", async () => {
     const refused = new FakeAppPort();
     refused.refuseToken = true;
-    expect(await installCustomApp(dependencies(refused), request())).toEqual({ error: CUSTOM_WORDS.token, ok: false });
+    expect(await installCustomApp(dependencies(refused), request())).toEqual({
+      error: CUSTOM_WORDS.token,
+      ok: false,
+    });
     const other = new FakeAppPort();
     other.applicationId = id(9);
-    expect(await installCustomApp(dependencies(other), request())).toEqual({ error: CUSTOM_WORDS.notTheApplication, ok: false });
+    expect(await installCustomApp(dependencies(other), request())).toEqual({
+      error: CUSTOM_WORDS.notTheApplication,
+      ok: false,
+    });
     const deps = dependencies();
-    expect(await installCustomApp(deps, request({ public_key: "a".repeat(64) }))).toEqual({ error: CUSTOM_WORDS.publicKey, ok: false });
+    expect(
+      await installCustomApp(deps, request({ public_key: "a".repeat(64) })),
+    ).toEqual({ error: CUSTOM_WORDS.publicKey, ok: false });
     expect(deps.hostsFake.bound).toEqual([]);
     expect(await deps.store.customApp(CUSTOM)).toBeUndefined();
   });
@@ -146,12 +184,29 @@ describe("installing a custom Discord application from the Ship card", () => {
   it("needs the bot in one server, or the server named among those it is in", async () => {
     const none = new FakeAppPort();
     none.guildList = [];
-    expect(await installCustomApp(dependencies(none), request())).toEqual({ error: CUSTOM_WORDS.noGuild, ok: false });
+    expect(await installCustomApp(dependencies(none), request())).toEqual({
+      error: CUSTOM_WORDS.noGuild,
+      ok: false,
+    });
     const several = new FakeAppPort();
-    several.guildList = [{ id: GUILD, name: "Acme" }, { id: OTHER_GUILD, name: "Beta" }];
-    expect(await installCustomApp(dependencies(several), request())).toEqual({ error: CUSTOM_WORDS.whichGuild, ok: false });
-    expect(await installCustomApp(dependencies(several), request({ guild_id: id(99) }))).toEqual({ error: CUSTOM_WORDS.notThatGuild, ok: false });
-    const chosen = await installCustomApp(dependencies(several), request({ guild_id: OTHER_GUILD }));
+    several.guildList = [
+      { id: GUILD, name: "Acme" },
+      { id: OTHER_GUILD, name: "Beta" },
+    ];
+    expect(await installCustomApp(dependencies(several), request())).toEqual({
+      error: CUSTOM_WORDS.whichGuild,
+      ok: false,
+    });
+    expect(
+      await installCustomApp(
+        dependencies(several),
+        request({ guild_id: id(99) }),
+      ),
+    ).toEqual({ error: CUSTOM_WORDS.notThatGuild, ok: false });
+    const chosen = await installCustomApp(
+      dependencies(several),
+      request({ guild_id: OTHER_GUILD }),
+    );
     expect(chosen).toMatchObject({ name: "Beta", ok: true });
   });
 
@@ -159,17 +214,27 @@ describe("installing a custom Discord application from the Ship card", () => {
     const commands = new FakeAppPort();
     commands.refuseCommands = true;
     const refused = dependencies(commands);
-    expect(await installCustomApp(refused, request())).toEqual({ error: CUSTOM_WORDS.commands, ok: false });
+    expect(await installCustomApp(refused, request())).toEqual({
+      error: CUSTOM_WORDS.commands,
+      ok: false,
+    });
     expect(refused.hostsFake.bound).toEqual([]);
     const deps = dependencies();
     deps.hostsFake.spentCodes.add(CODE);
-    expect(await installCustomApp(deps, request())).toEqual({ error: CUSTOM_WORDS.bind, ok: false });
+    expect(await installCustomApp(deps, request())).toEqual({
+      error: CUSTOM_WORDS.bind,
+      ok: false,
+    });
     expect(await deps.store.installation(CUSTOM, GUILD)).toBeUndefined();
     const again = dependencies();
     expect((await installCustomApp(again, request())).ok).toBe(true);
-    expect((await installCustomApp(again, request({ bind_code: `${CODE}2` }))).ok).toBe(true);
+    expect(
+      (await installCustomApp(again, request({ bind_code: `${CODE}2` }))).ok,
+    ).toBe(true);
     expect(again.hostsFake.uninstalledKeys).toEqual(["dlhk_test_1"]);
-    expect((await again.store.installation(CUSTOM, GUILD))?.hostUid).toBe("host-2");
+    expect((await again.store.installation(CUSTOM, GUILD))?.hostUid).toBe(
+      "host-2",
+    );
   });
 });
 
@@ -184,10 +249,20 @@ describe("the custom application routes", () => {
     const deps = dependencies();
     const served = await serve(customInstallRoutes(deps));
     close = served.close;
-    const preflight = await fetch(`${served.url}${CUSTOM_INSTALL_PATH}`, { headers: { origin: WEB }, method: "OPTIONS" });
+    const preflight = await fetch(`${served.url}${CUSTOM_INSTALL_PATH}`, {
+      headers: { origin: WEB },
+      method: "OPTIONS",
+    });
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get("access-control-allow-origin")).toBe(WEB);
-    expect((await fetch(`${served.url}${CUSTOM_INSTALL_PATH}`, { headers: { origin: "https://evil.example" }, method: "OPTIONS" })).status).toBe(403);
+    expect(
+      (
+        await fetch(`${served.url}${CUSTOM_INSTALL_PATH}`, {
+          headers: { origin: "https://evil.example" },
+          method: "OPTIONS",
+        })
+      ).status,
+    ).toBe(403);
     const post = (body: unknown, origin = WEB) =>
       fetch(`${served.url}${CUSTOM_INSTALL_PATH}`, {
         body: JSON.stringify(body),
@@ -218,10 +293,18 @@ describe("the custom application routes", () => {
       queue: { enqueue: async () => true } as never,
       store: deps.store,
     });
-    const served = await serve({ [`POST ${CUSTOM_INTERACTIONS_ROUTE}`]: route });
+    const served = await serve({
+      [`POST ${CUSTOM_INTERACTIONS_ROUTE}`]: route,
+    });
     close = served.close;
     const at = String(Math.floor(deps.now() / 1000));
-    const body = JSON.stringify({ application_id: CUSTOM, id: id(900), token: "t", type: 1, version: 1 });
+    const body = JSON.stringify({
+      application_id: CUSTOM,
+      id: id(900),
+      token: "t",
+      type: 1,
+      version: 1,
+    });
     const post = (applicationId: string, signature: string) =>
       fetch(`${served.url}/discord/interactions/${applicationId}`, {
         body,
@@ -246,23 +329,37 @@ describe("posting as the right bot", () => {
     const deps = dependencies();
     await installCustomApp(deps, request());
     const own = new FakePort();
-    const made: Array<{ applicationId: string; botToken: string; port: FakePort }> = [];
-    const ports = new ApplicationPorts({ applicationId: APPLICATION, port: own }, deps.store, deps.cipher, (settings) => {
-      const port = new FakePort();
-      made.push({ ...settings, port });
-      return port;
-    });
+    const made: Array<{
+      applicationId: string;
+      botToken: string;
+      port: FakePort;
+    }> = [];
+    const ports = new ApplicationPorts(
+      { applicationId: APPLICATION, port: own },
+      deps.store,
+      deps.cipher,
+      (settings) => {
+        const port = new FakePort();
+        made.push({ ...settings, port });
+        return port;
+      },
+    );
     const port = ports.contextPort();
     await port.guildName(GUILD);
     expect(own.calls.map((call) => call.method)).toEqual(["guildName"]);
     await ports.within(CUSTOM, async () => {
-      await port.createMessage("C1", { allowed_mentions: { parse: [] }, content: "hi" });
+      await port.createMessage("C1", {
+        allowed_mentions: { parse: [] },
+        content: "hi",
+      });
       expect(ports.current).toBe(CUSTOM);
     });
     expect(ports.current).toBe(APPLICATION);
     expect(made).toHaveLength(1);
     expect(made[0]).toMatchObject({ applicationId: CUSTOM, botToken: TOKEN });
-    expect(made[0]!.port.calls.map((call) => call.method)).toEqual(["createMessage"]);
+    expect(made[0]!.port.calls.map((call) => call.method)).toEqual([
+      "createMessage",
+    ]);
     expect(await ports.for(CUSTOM)).toBe(made[0]!.port);
     await expect(ports.for(id(42))).rejects.toThrow(/is connected/);
     ports.forget(CUSTOM);
@@ -271,12 +368,24 @@ describe("posting as the right bot", () => {
 });
 
 describe("hearing each bot: one gateway per custom application", () => {
-  function gateways(deps: ReturnType<typeof dependencies>, selfAnswers: () => Promise<unknown>) {
+  function gateways(
+    deps: ReturnType<typeof dependencies>,
+    selfAnswers: () => Promise<unknown>,
+  ) {
     const started: string[] = [];
     const stopped: string[] = [];
     const forgotten: string[] = [];
     const custom = new CustomGateways({
-      botOf: () => async () => ({ session_start_limit: { max_concurrency: 1, remaining: 1, reset_after: 0, total: 1 }, shards: 1, url: "wss://gateway" }),
+      botOf: () => async () => ({
+        session_start_limit: {
+          max_concurrency: 1,
+          remaining: 1,
+          reset_after: 0,
+          total: 1,
+        },
+        shards: 1,
+        url: "wss://gateway",
+      }),
       cipher: deps.cipher,
       enqueue: async () => true,
       forget: (applicationId) => void forgotten.push(applicationId),
@@ -285,11 +394,20 @@ describe("hearing each bot: one gateway per custom application", () => {
         stop: async () => void stopped.push(made.applicationId),
       }),
       hosts: { self: async () => (await selfAnswers()) as never },
-      lockOf: () => ({ acquire: async () => true, held: async () => true, release: async () => undefined }),
+      lockOf: () => ({
+        acquire: async () => true,
+        held: async () => true,
+        release: async () => undefined,
+      }),
       logger: deps.logger,
       socket: () => ({ close: () => undefined, send: () => undefined }),
       store: deps.store,
-      timers: { clearInterval: () => undefined, clearTimeout: () => undefined, setInterval: () => undefined, setTimeout: () => undefined } as never,
+      timers: {
+        clearInterval: () => undefined,
+        clearTimeout: () => undefined,
+        setInterval: () => undefined,
+        setTimeout: () => undefined,
+      } as never,
     });
     return { custom, forgotten, started, stopped };
   }
@@ -298,7 +416,9 @@ describe("hearing each bot: one gateway per custom application", () => {
     const deps = dependencies();
     await installCustomApp(deps, request());
     let answer: () => Promise<unknown> = async () => deps.hostsFake.self;
-    const { custom, forgotten, started, stopped } = gateways(deps, () => answer());
+    const { custom, forgotten, started, stopped } = gateways(deps, () =>
+      answer(),
+    );
     await custom.reconcile();
     expect(started).toEqual([CUSTOM]);
     await custom.reconcile();
@@ -312,12 +432,18 @@ describe("hearing each bot: one gateway per custom application", () => {
     expect(await deps.store.customApp(CUSTOM)).toBeDefined();
     // The owner disconnected it on the Ship tab: its key opens nothing.
     answer = async () => {
-      throw new HostRefusedError(401, "ended", "Datalayer did not answer the installation");
+      throw new HostRefusedError(
+        401,
+        "ended",
+        "Datalayer did not answer the installation",
+      );
     };
     await custom.reconcile();
     expect(stopped).toEqual([CUSTOM]);
     expect(forgotten).toEqual([CUSTOM]);
-    expect((await deps.store.installation(CUSTOM, GUILD))?.state).toBe("removed");
+    expect((await deps.store.installation(CUSTOM, GUILD))?.state).toBe(
+      "removed",
+    );
     expect(await deps.store.customApp(CUSTOM)).toBeUndefined();
     expect(custom.running).toEqual([]);
     await custom.stop();

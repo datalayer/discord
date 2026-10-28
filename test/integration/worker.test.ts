@@ -334,6 +334,10 @@ describe("/ask end to end (DC-105)", () => {
         "error",
         "file",
         "progress",
+        // A company's sign-in waiting for the person (agent-runtimes 4291b4fa):
+        // the shared TurnState shows nothing of it yet, so the person signs in
+        // from Datalayer; showing its page here is still to be decided.
+        "sign-in",
         "stop",
         "table",
         "text",

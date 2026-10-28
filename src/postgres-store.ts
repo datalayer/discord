@@ -254,7 +254,12 @@ export class PostgresStore implements DiscordStore {
        ON CONFLICT (application_id) DO UPDATE SET
          public_key = EXCLUDED.public_key,
          bot_token = EXCLUDED.bot_token`,
-      [app.applicationId, app.publicKey, app.botToken, app.createdAt ?? new Date()],
+      [
+        app.applicationId,
+        app.publicKey,
+        app.botToken,
+        app.createdAt ?? new Date(),
+      ],
     );
   }
 

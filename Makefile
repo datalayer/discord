@@ -19,7 +19,9 @@
 #        registered on it; bound at Datalayer as a custom installation), its interactions at
 #        /discord/interactions/<application_id> verified with its own key, posted as its own bot, heard on
 #        its own gateway connection (migration 010, discord_custom_app; commands/ shipped in the image).
-VERSION ?= 0.1.6
+# 0.1.7: the bind asserts the provider — Datalayer's own application binds as `datalayer`, a custom one as
+#        `custom` with its application id (agent-runtimes 1.5.88; ai-agents 0.0.94 refuses a bind without it).
+VERSION ?= 0.1.7
 REGISTRY ?= $(DATALAYER_DOCKER_REGISTRY)
 EXPORT := $(HOME)/.cache/discord-export-$(shell git rev-parse --short HEAD)
 

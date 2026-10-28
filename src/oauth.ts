@@ -204,6 +204,9 @@ export function oauthRoutes(dependencies: OAuthDependencies) {
         code: dependencies.cipher.decrypt(kept, `install:${nonce}`),
         externalId,
         name: guild.name ?? "",
+        // Datalayer's own Discord application: the provider the
+        // installation was registered with in Settings.
+        provider: "datalayer",
       });
       const self = await dependencies.hosts.self(bound.hostKey);
       // Where Datalayer pushes this server's deliveries (DC-301), and the
