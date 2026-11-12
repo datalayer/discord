@@ -330,6 +330,8 @@ export class FakeHosts {
   acknowledged: string[] = [];
   webhooks: Array<{ hostKey: string; url: string }> = [];
   refuseWebhook = false;
+  /** The key Datalayer names on a registration (none: the shared secret, as before the switch). */
+  webhookKey?: string;
   // `self` is a field above for tests to change; the client method reads it.
   readonly client = {
     acknowledge: async (_hostKey: string, uid: string) => {
@@ -343,7 +345,11 @@ export class FakeHosts {
           "Datalayer did not register the delivery address",
         );
       this.webhooks.push({ hostKey, url });
-      return { signingSecret: "delivery-secret-for-tests", version: 1 };
+      return {
+        signingSecret: "delivery-secret-for-tests",
+        version: this.webhooks.length,
+        ...(this.webhookKey ? { key: this.webhookKey } : {}),
+      };
     },
     admin: (
       hostKey: string,

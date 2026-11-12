@@ -2,7 +2,6 @@ import {
   DELIVERY_PATH,
   HostRefusedError,
   type DatalayerHostClient,
-  type EncryptedSecret,
   type Logger,
   type SecretCipher,
 } from "@datalayer/agent-runtimes/lib/portable/hosts";
@@ -10,6 +9,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { DiscordPort } from "./discord-port.js";
+import { keptDelivery } from "./deliveries.js";
 import { externalIdOf } from "./domain.js";
 import { permissionsInteger } from "./permissions.js";
 import type { DiscordStore } from "./store.js";
@@ -212,15 +212,16 @@ export function oauthRoutes(dependencies: OAuthDependencies) {
       // Where Datalayer pushes this server's deliveries (DC-301), and the
       // secret they are signed with, kept encrypted. Refused or unreachable,
       // the worker reads the outbox instead.
-      let deliverySecret: EncryptedSecret | undefined;
+      let delivery: ReturnType<typeof keptDelivery> | undefined;
       try {
-        const { signingSecret } = await dependencies.hosts.setWebhook(
+        const hook = await dependencies.hosts.setWebhook(
           bound.hostKey,
           `${dependencies.appUrl.replace(/\/+$/, "")}${DELIVERY_PATH}/${encodeURIComponent(bound.hostUid)}`,
         );
-        deliverySecret = dependencies.cipher.encrypt(
-          signingSecret,
-          `delivery:${externalId}`,
+        delivery = keptDelivery(
+          dependencies.cipher,
+          { applicationId: dependencies.applicationId, guildId: guild.id },
+          { key: hook.key, secret: hook.signingSecret, version: hook.version },
         );
       } catch (error) {
         dependencies.logger.warn("install.delivery_not_registered", { error });
@@ -241,7 +242,7 @@ export function oauthRoutes(dependencies: OAuthDependencies) {
         state: "active",
         notifications:
           before && before.state !== "removed" ? before.notifications : "quiet",
-        ...(deliverySecret ? { deliverySecret } : {}),
+        ...delivery,
       });
     } catch (error) {
       if (error instanceof HostRefusedError) {

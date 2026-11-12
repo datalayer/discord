@@ -1,13 +1,17 @@
 import {
+  DELIVERY_KEY_HEADER,
   DELIVERY_ROUTE,
+  DeliveryRenewal,
   deliveryRoute,
   deliverySignature,
+  SHARED_SECRET_DELIVERIES_UNTIL,
   type HostDelivery,
 } from "@datalayer/agent-runtimes/lib/portable/hosts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   deliverySecretData,
+  deliverySecretKeeper,
   deliverySinkOf,
   type DeliveryQueueJob,
 } from "../../src/deliveries.js";
@@ -175,6 +179,98 @@ describe("the delivery webhook (DC-301)", () => {
     expect((await post(HOST, now + 301)).status).toBe(401);
     expect((await post("host-unknown", now)).status).toBe(404);
     expect(queued).toHaveLength(1);
+  });
+
+  it("verifies a push under Datalayer's own key only when it names the key kept, and a shared-secret one only until 31 December 2026", async () => {
+    const h = harness();
+    await bound(h);
+    const queued: unknown[] = [];
+    const delivery = requested();
+    const body = JSON.stringify(delivery);
+    const push = async (at: number, key?: string) => {
+      const served = await serve({
+        [`POST ${DELIVERY_ROUTE}`]: deliveryRoute(
+          deliverySinkOf(h.store, h.cipher),
+          async (one) => void queued.push(one),
+          () => at,
+        ),
+      });
+      try {
+        const answered = await fetch(
+          `${served.url}/datalayer/deliveries/${HOST}`,
+          {
+            body,
+            headers: {
+              "x-datalayer-signature": deliverySignature(SECRET, at, body),
+              "x-datalayer-timestamp": String(at),
+              ...(key ? { [DELIVERY_KEY_HEADER]: key } : {}),
+            },
+            method: "POST",
+          },
+        );
+        return answered.status;
+      } finally {
+        await served.close();
+      }
+    };
+    const before = SHARED_SECRET_DELIVERIES_UNTIL - 60;
+    const after = SHARED_SECRET_DELIVERIES_UNTIL + 60;
+    // Kept before the switch, without a key: until the window ends, then never.
+    expect(await push(before)).toBe(200);
+    expect(await push(after)).toBe(401);
+    // Registered again: the push names the key kept, whatever the date.
+    await deliverySecretKeeper(h.store, h.cipher)(HOST, {
+      key: "ai-agents-host-deliveries-v1",
+      secret: SECRET,
+      version: 2,
+    });
+    expect(await push(after, "ai-agents-host-deliveries-v1")).toBe(200);
+    expect(await push(after)).toBe(401);
+    expect(await push(after, "ai-agents-host-deliveries-v2")).toBe(401);
+    expect(queued).toHaveLength(2);
+  });
+});
+
+describe("a webhook registered again", () => {
+  it("registers when Datalayer asks, at the address it holds, and keeps the new secret, key and version encrypted where the old ones were", async () => {
+    const h = harness();
+    await bound(h);
+    const url = `https://discord.example/datalayer/deliveries/${HOST}`;
+    h.hosts.webhookKey = "ai-agents-host-deliveries-v1";
+    h.hosts.self = {
+      ...h.hosts.self,
+      delivery: { renew: true, url, version: 1 },
+    };
+    const renewal = new DeliveryRenewal(
+      deliverySinkOf(h.store, h.cipher),
+      h.hosts.client,
+      deliverySecretKeeper(h.store, h.cipher),
+      { warn: () => undefined },
+    );
+    expect(await renewal.renewOnce()).toBe(1);
+    expect(h.hosts.webhooks.at(-1)?.url).toBe(url);
+    const kept = await h.store.installationByHost(HOST);
+    expect(kept?.deliveryKey).toBe("ai-agents-host-deliveries-v1");
+    expect(kept?.deliveryVersion).toBe(h.hosts.webhooks.length);
+    expect(JSON.stringify(kept?.deliverySecret)).not.toContain(SECRET);
+    await expect(
+      deliverySinkOf(h.store, h.cipher).deliverySecretOf(HOST),
+    ).resolves.toEqual({
+      key: "ai-agents-host-deliveries-v1",
+      secret: SECRET,
+      version: h.hosts.webhooks.length,
+    });
+    // Datalayer has it now: nothing more to do.
+    h.hosts.self = {
+      ...h.hosts.self,
+      delivery: {
+        key: "ai-agents-host-deliveries-v1",
+        renew: false,
+        url,
+        version: h.hosts.webhooks.length,
+      },
+    };
+    expect(await renewal.renewOnce()).toBe(0);
   });
 });
 

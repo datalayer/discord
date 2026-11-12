@@ -19,6 +19,7 @@ import type {
   MessageBody,
   SentMessage,
 } from "./discord-port.js";
+import { keptDelivery } from "./deliveries.js";
 import { externalIdOf } from "./domain.js";
 import {
   Gateway,
@@ -328,13 +329,17 @@ export async function installCustomApp(
     return { error: CUSTOM_WORDS.bind, ok: false };
   }
   const self = await hosts.self(bound.hostKey);
-  let deliverySecret: EncryptedSecret | undefined;
+  let delivery: ReturnType<typeof keptDelivery> | undefined;
   try {
-    const { signingSecret } = await hosts.setWebhook(
+    const hook = await hosts.setWebhook(
       bound.hostKey,
       `${dependencies.appUrl.replace(/\/+$/, "")}${DELIVERY_PATH}/${encodeURIComponent(bound.hostUid)}`,
     );
-    deliverySecret = cipher.encrypt(signingSecret, `delivery:${externalId}`);
+    delivery = keptDelivery(
+      cipher,
+      { applicationId: application.id, guildId: guild.id },
+      { key: hook.key, secret: hook.signingSecret, version: hook.version },
+    );
   } catch (error) {
     logger.warn("custom_install.delivery_not_registered", { error });
   }
@@ -357,7 +362,7 @@ export async function installCustomApp(
     organizationUid: self.accountUid,
     permissions: permissionsInteger(),
     state: "active",
-    ...(deliverySecret ? { deliverySecret } : {}),
+    ...delivery,
   });
   await store.saveCustomApp({
     applicationId: application.id,

@@ -37,6 +37,14 @@ export type Installation = Readonly<{
   /** How the server hears routine posts (DC-307): an owner's choice, quiet at install. */
   notifications: NotificationMode;
   deliverySecret?: EncryptedSecret;
+  /**
+   * The key Datalayer derived that secret under
+   * (`ai-agents-host-deliveries-v<N>`), named by every push; none: the
+   * platform's shared secret, accepted until 31 December 2026 only.
+   */
+  deliveryKey?: string;
+  /** The registration's version the secret belongs to. */
+  deliveryVersion?: number;
   removedAt?: Date;
 }>;
 
@@ -285,9 +293,16 @@ export class MemoryStore implements DiscordStore {
         key !== `${installation.applicationId}:${installation.guildId}`
       )
         throw new Error("duplicate key value violates unique constraint");
+    // The key and version describe the secret: never kept without it.
     this.#installations.set(
       `${installation.applicationId}:${installation.guildId}`,
-      installation,
+      installation.deliverySecret
+        ? installation
+        : {
+            ...installation,
+            deliveryKey: undefined,
+            deliveryVersion: undefined,
+          },
     );
   }
 

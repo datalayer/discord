@@ -56,6 +56,31 @@ function contract(name: string, make: () => Promise<DiscordStore>) {
       expect(await store.turn("t1")).toBeUndefined();
     });
 
+    it("keeps a delivery secret with the key and version it was answered, and no key without a secret", async () => {
+      const store = await make();
+      const cipher = testCipher();
+      const secret = cipher.encrypt("s".repeat(64), "delivery:a:g");
+      await store.saveInstallation(
+        installation(cipher, {
+          deliveryKey: "ai-agents-host-deliveries-v1",
+          deliverySecret: secret,
+          deliveryVersion: 2,
+        }),
+      );
+      expect(await store.installation(APPLICATION, GUILD)).toMatchObject({
+        deliveryKey: "ai-agents-host-deliveries-v1",
+        deliverySecret: secret,
+        deliveryVersion: 2,
+      });
+      await store.saveInstallation(
+        installation(cipher, { deliveryKey: "ai-agents-host-deliveries-v9" }),
+      );
+      const plain = await store.installation(APPLICATION, GUILD);
+      expect(plain?.deliverySecret).toBeUndefined();
+      expect(plain?.deliveryKey).toBeUndefined();
+      expect(plain?.deliveryVersion).toBeUndefined();
+    });
+
     it("answers a component once", async () => {
       const store = await make();
       await store.saveComponent({
