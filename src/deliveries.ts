@@ -2,6 +2,7 @@ import {
   receiveDelivery,
   type DatalayerHostClient,
   type DeliveryJob,
+  type DeliverySecret,
   type DeliverySink,
   type HostDelivery,
   type Logger,
@@ -60,8 +61,49 @@ const UNKNOWN_CHANNEL = 10003;
 const THREAD_ARCHIVED = 50083;
 
 /** The installation's associated data for its delivery secret at rest. */
-export const deliverySecretData = (installation: Installation): string =>
+export const deliverySecretData = (
+  installation: Pick<Installation, "applicationId" | "guildId">,
+): string =>
   `delivery:${externalIdOf(installation.applicationId, installation.guildId)}`;
+
+/**
+ * What an installation keeps of a webhook registration: the secret
+ * encrypted (bound to `delivery:<external id>`), with the key it was
+ * derived under and the registration's version.
+ */
+export function keptDelivery(
+  cipher: Pick<SecretCipher, "encrypt">,
+  installation: Pick<Installation, "applicationId" | "guildId">,
+  kept: DeliverySecret,
+): Pick<Installation, "deliveryKey" | "deliverySecret" | "deliveryVersion"> {
+  return {
+    deliveryKey: kept.key,
+    deliverySecret: cipher.encrypt(
+      kept.secret,
+      deliverySecretData(installation),
+    ),
+    deliveryVersion: kept.version,
+  };
+}
+
+/**
+ * Keep the secret of a webhook registered again (`DeliveryRenewal`) where
+ * the old one was: the installation bound to `hostUid`, its key and version
+ * replaced with it.
+ */
+export function deliverySecretKeeper(
+  store: Pick<DiscordStore, "installationByHost" | "saveInstallation">,
+  cipher: Pick<SecretCipher, "encrypt">,
+): (hostUid: string, kept: DeliverySecret) => Promise<void> {
+  return async (hostUid, kept) => {
+    const installation = await store.installationByHost(hostUid);
+    if (!installation || installation.state === "removed") return;
+    await store.saveInstallation({
+      ...installation,
+      ...keptDelivery(cipher, installation, kept),
+    });
+  };
+}
 
 /** The store, as the shared deliveries read it: a removed installation has no key. */
 export function deliverySinkOf(
@@ -81,10 +123,14 @@ export function deliverySinkOf(
     deliverySecretOf: async (hostUid) => {
       const installation = await store.installationByHost(hostUid);
       return installation?.deliverySecret && installation.state !== "removed"
-        ? cipher.decrypt(
-            installation.deliverySecret,
-            deliverySecretData(installation),
-          )
+        ? {
+            key: installation.deliveryKey,
+            secret: cipher.decrypt(
+              installation.deliverySecret,
+              deliverySecretData(installation),
+            ),
+            version: installation.deliveryVersion,
+          }
         : undefined;
     },
     hostKeyOf: async (hostUid) => {

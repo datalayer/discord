@@ -27,6 +27,20 @@ one.
 `DATALAYER_DISCORD_LOG_SALT` (optional) salts the pseudonyms of logs and
 spans; by default `datalayer-discord`.
 
+## Delivery secrets
+
+A server's delivery secret is kept encrypted with the key Datalayer derived
+it under (`ai-agents-host-deliveries-v<N>`) and the registration's version
+(migration `011`); every push names that key (`X-Datalayer-Delivery-Key`)
+and a push naming another, or none, is refused. A secret kept without a key
+was derived from the platform's shared secret: its pushes are accepted until
+31 December 2026, 00:00 UTC only. At start and every hour the service asks
+Datalayer whether each server's webhook must be registered again
+(`GET /apps/hosts/self` answers `delivery.renew`), registers it again at the
+same address and keeps the new secret where the old one was (the kit's
+`DeliveryRenewal`; a failure is logged as `delivery.not_renewed` and tried
+again the next hour, the outbox carrying the deliveries meanwhile).
+
 ## Roles and health
 
 Every role answers `GET /healthz` (the process answers) and `GET /readyz`
@@ -118,6 +132,7 @@ ALTER TABLE discord_component OWNER TO discord_owner;
 ALTER TABLE discord_allowance OWNER TO discord_owner;
 ALTER TABLE discord_gateway_session OWNER TO discord_owner;
 ALTER TABLE discord_direct_choice OWNER TO discord_owner;
+ALTER TABLE discord_custom_app OWNER TO discord_owner;
 ALTER FUNCTION discord_drop_spent_tokens(bigint) OWNER TO discord_owner;
 ALTER FUNCTION discord_forget_jobs(text, text) OWNER TO discord_owner;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO discord;

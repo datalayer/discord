@@ -30,6 +30,8 @@ type InstallationRow = {
   state: InstallationState;
   notifications: NotificationMode;
   delivery_secret: EncryptedSecret | null;
+  delivery_key: string | null;
+  delivery_version: number | null;
   removed_at: Date | null;
 };
 
@@ -58,6 +60,10 @@ const installationOf = (row: InstallationRow): Installation => ({
   state: row.state,
   notifications: row.notifications,
   ...(row.delivery_secret ? { deliverySecret: row.delivery_secret } : {}),
+  ...(row.delivery_key ? { deliveryKey: row.delivery_key } : {}),
+  ...(row.delivery_version !== null && row.delivery_version !== undefined
+    ? { deliveryVersion: row.delivery_version }
+    : {}),
   ...(row.removed_at ? { removedAt: row.removed_at } : {}),
 });
 
@@ -117,8 +123,8 @@ export class PostgresStore implements DiscordStore {
       `INSERT INTO discord_installation
          (application_id, guild_id, datalayer_host_uid, datalayer_host_key,
           datalayer_organization_uid, installed_by, permissions, state,
-          delivery_secret, removed_at, notifications)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          delivery_secret, removed_at, notifications, delivery_key, delivery_version)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        ON CONFLICT (application_id, guild_id) DO UPDATE SET
          datalayer_host_uid = EXCLUDED.datalayer_host_uid,
          datalayer_host_key = EXCLUDED.datalayer_host_key,
@@ -129,6 +135,8 @@ export class PostgresStore implements DiscordStore {
          delivery_secret = EXCLUDED.delivery_secret,
          removed_at = EXCLUDED.removed_at,
          notifications = EXCLUDED.notifications,
+         delivery_key = EXCLUDED.delivery_key,
+         delivery_version = EXCLUDED.delivery_version,
          updated_at = now()`,
       [
         one.applicationId,
@@ -142,6 +150,8 @@ export class PostgresStore implements DiscordStore {
         one.deliverySecret ?? null,
         one.removedAt ?? null,
         one.notifications,
+        one.deliverySecret ? (one.deliveryKey ?? null) : null,
+        one.deliverySecret ? (one.deliveryVersion ?? null) : null,
       ],
     );
   }

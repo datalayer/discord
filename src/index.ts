@@ -3,6 +3,7 @@ import {
   DEFAULT_QUOTAS,
   DELIVERY_ROUTE,
   DeliveryPoller,
+  DeliveryRenewal,
   deliveryRoute,
   HostKeyCredentials,
   HttpAgentClient,
@@ -21,7 +22,11 @@ import {
   CUSTOM_INTERACTIONS_ROUTE,
   httpDiscordAppPort,
 } from "./custom-apps.js";
-import { deliverySinkOf, type DeliveryQueueJob } from "./deliveries.js";
+import {
+  deliverySecretKeeper,
+  deliverySinkOf,
+  type DeliveryQueueJob,
+} from "./deliveries.js";
 import { HttpDiscordPort } from "./discord-port.js";
 import {
   discordShape,
@@ -298,7 +303,22 @@ if (role === "worker" || role === "all") {
     },
   );
   poller.start(config.DATALAYER_DELIVERY_POLL_SECONDS);
-  stopPoller = () => poller.stop();
+  // A webhook whose secret rests on a key Datalayer no longer signs with is
+  // registered again, and its new secret kept where the old one was.
+  const renewal = new DeliveryRenewal(
+    deliverySinkOf(store, cipher),
+    hosts,
+    deliverySecretKeeper(store, cipher),
+    {
+      warn: (message: string) =>
+        logger.warn("delivery.not_renewed", { message }),
+    },
+  );
+  renewal.start();
+  stopPoller = () => {
+    poller.stop();
+    renewal.stop();
+  };
   const daily = async () => {
     try {
       const removed = await reconcile({ ...removal, port });

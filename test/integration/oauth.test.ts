@@ -126,6 +126,17 @@ describe("/discord/install and /discord/oauth/callback (DC-103)", () => {
         `delivery:${APPLICATION}:${GUILD}`,
       ),
     ).toBe("delivery-secret-for-tests");
+    // Registered before Datalayer signs with its own key: no key kept.
+    expect(kept?.deliveryKey).toBeUndefined();
+    expect(kept?.deliveryVersion).toBe(1);
+    const keyed = await service();
+    keyed.hosts.webhookKey = "ai-agents-host-deliveries-v1";
+    await keyed.get(
+      `/discord/oauth/callback?code=c&state=${await keyed.start()}&guild_id=${GUILD}`,
+    );
+    const named = await keyed.store.installation(APPLICATION, GUILD);
+    expect(named?.deliveryKey).toBe("ai-agents-host-deliveries-v1");
+    expect(named?.deliveryVersion).toBe(1);
     const second = await service();
     second.hosts.refuseWebhook = true;
     const bound = await second.get(
