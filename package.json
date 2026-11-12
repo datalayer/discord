@@ -39,7 +39,7 @@
     "discord-api-types": "0.38.56",
     "discord-interactions": "4.4.0",
     "pg": "8.23.1",
-    "zod": "4.6.5"
+    "zod": "4.6.7"
   },
   "peerDependencies": {
     "@datalayer/agent-runtimes": ">=1.6.34 <2"
