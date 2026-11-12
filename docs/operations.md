@@ -132,6 +132,7 @@ ALTER TABLE discord_component OWNER TO discord_owner;
 ALTER TABLE discord_allowance OWNER TO discord_owner;
 ALTER TABLE discord_gateway_session OWNER TO discord_owner;
 ALTER TABLE discord_direct_choice OWNER TO discord_owner;
+ALTER TABLE discord_custom_app OWNER TO discord_owner;
 ALTER FUNCTION discord_drop_spent_tokens(bigint) OWNER TO discord_owner;
 ALTER FUNCTION discord_forget_jobs(text, text) OWNER TO discord_owner;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO discord;
