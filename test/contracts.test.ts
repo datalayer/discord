@@ -7,7 +7,6 @@ import {
   discordShape,
   externalIdOf,
   placeOf,
-  sessionUidOf,
   targetOf,
 } from "../src/domain.js";
 import { keyOf } from "../src/interactions.js";
@@ -74,11 +73,10 @@ describe("Discord's forms of the host contracts (DC-006)", () => {
     expect(placeOf(direct)).toEqual(discord.direct.place);
   });
 
-  it("derives the session uid and the delivery target the contract names", () => {
+  it("derives the delivery target the contract names", () => {
     const thread = keyOf(
       interactionIn(discord.thread.channel, discord.guild_id),
     ).key;
-    expect(sessionUidOf(thread)).toBe(discord.session.uid);
     expect(
       targetOf({
         key: thread,

@@ -208,7 +208,6 @@ describe("/datalayer (DC-104, DC-106)", () => {
     );
     expect(h.agent.started.at(-1)).toMatchObject({
       applicationId: "deployment-2",
-      sessionGeneration: 1,
     });
     expect(h.agent.started.at(-1)?.sessionId).toBeUndefined();
   });

@@ -1,5 +1,4 @@
 import {
-  hostSessionUid,
   type HostShape,
   type HostTurnRequest,
   type Place,
@@ -7,8 +6,9 @@ import {
 
 /**
  * What is Discord's own in a turn: the thread
- * key, the installation's external id, the session uid, the place sent to
- * Datalayer and the delivery target. The rest is the shared host kit's.
+ * key, the installation's external id, the place sent to Datalayer and the
+ * delivery target. A thread's session uid is the runtime's (a ULID), kept
+ * on the thread's binding. The rest is the shared host kit's.
  */
 
 /** The host kind Datalayer knows Discord by. */
@@ -86,15 +86,6 @@ export function placeOf(key: ThreadKey): Place {
   return { id: key.parentId ?? key.channelId, kind: "channel" };
 }
 
-/** `discord-<40 hex>` over application, guild, channel and thread. */
-export function sessionUidOf(key: ThreadKey, generation?: number): string {
-  return hostSessionUid(
-    HOST_KIND,
-    [key.applicationId, key.guildId, key.parentId ?? key.channelId, key.thread],
-    generation,
-  );
-}
-
 /**
  * The delivery target handed back with every delivery: at most 2 KB,
  * validated again when a delivery comes back (`targetSchema`, DC-301). It
@@ -126,7 +117,5 @@ export const discordShape: HostShape<DiscordTurn> = {
     place: placeOf(request.provenance.key),
     thread: request.provenance.key.thread,
   }),
-  sessionUidOf: (request) =>
-    sessionUidOf(request.provenance.key, request.sessionGeneration),
   targetOf: (request) => targetOf(request.provenance),
 };

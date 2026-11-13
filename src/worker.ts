@@ -950,7 +950,8 @@ export class Worker {
         threadExists: inThread,
         userId: job.userId,
       },
-      sessionGeneration: generation,
+      // The thread's session, kept on its binding; none for a new
+      // generation, whose session the runtime mints.
       ...(sameApplication ? { sessionId: turn.binding?.sessionUid } : {}),
     };
     let stream;

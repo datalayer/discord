@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { answers, type MessageJob } from "../../src/gateway.js";
-import { sessionUidOf, threadIdOf, type ThreadKey } from "../../src/domain.js";
+import { threadIdOf, type ThreadKey } from "../../src/domain.js";
 import { NO_MENTIONS } from "../../src/render.js";
 import { WAITING } from "../../src/worker.js";
 import { WORDS } from "../../src/words.js";
@@ -256,9 +256,12 @@ describe("mentions over the gateway (DC-202)", () => {
     });
     await h.worker.handle(mention({ channelId: THREAD }, 711));
     const next = h.agent.started[1]!;
-    expect(next.sessionGeneration).toBe(1);
     expect(next.sessionId).toBeUndefined();
-    // The session uid the agent client derives is a new one.
-    expect(sessionUidOf(key, 1)).not.toBe(sessionUidOf(key, 0));
+    // The runtime minted a new one, kept for generation 1.
+    expect(h.agent.minted).toHaveLength(2);
+    expect(await h.store.thread(threadIdOf(key))).toMatchObject({
+      generation: 1,
+      sessionUid: h.agent.minted[1],
+    });
   });
 });

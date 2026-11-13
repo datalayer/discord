@@ -1,12 +1,7 @@
 import { MemoryWorkQueue } from "@datalayer/agent-runtimes/lib/portable/hosts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  discordShape,
-  sessionUidOf,
-  threadIdOf,
-  type ThreadKey,
-} from "../../src/domain.js";
+import { threadIdOf, type ThreadKey } from "../../src/domain.js";
 import { interactionsRoute, RESPONSE } from "../../src/interactions.js";
 import { EPHEMERAL, START_OVER_LABEL } from "../../src/render.js";
 import type { DiscordJob } from "../../src/resources.js";
@@ -36,6 +31,9 @@ import { connected, harness, type Harness } from "../support/worker.js";
 
 const key = signingKey();
 const THREAD = id(500);
+/** The thread's session, as the runtime minted it before. */
+const KEPT = "01KA0000000000000000000000";
+
 const IN_THREAD: ThreadKey = {
   applicationId: APPLICATION,
   channelId: THREAD,
@@ -71,7 +69,7 @@ describe("components through the interaction handler (DC-207)", () => {
       generation: 0,
       guildId: GUILD,
       openedBy: ALICE,
-      sessionUid: sessionUidOf(IN_THREAD, 0),
+      sessionUid: KEPT,
       threadKey: threadIdOf(IN_THREAD),
     });
     queue = new Queue();
@@ -192,7 +190,7 @@ describe("components through the interaction handler (DC-207)", () => {
     expect(told()).toBe(WORDS.notYours);
     expect(await h.store.thread(threadIdOf(IN_THREAD))).toMatchObject({
       generation: 0,
-      sessionUid: sessionUidOf(IN_THREAD, 0),
+      sessionUid: KEPT,
     });
 
     await choose(ALICE, "deployment-2");
@@ -226,9 +224,8 @@ describe("components through the interaction handler (DC-207)", () => {
     );
     const [turn] = h.agent.started;
     expect(turn?.applicationId).toBe("deployment-2");
-    expect(turn?.sessionGeneration).toBe(1);
     expect(turn?.sessionId).toBeUndefined();
-    expect(sessionUidOf(IN_THREAD, 1)).not.toBe(sessionUidOf(IN_THREAD, 0));
+    expect(h.agent.minted[0]).not.toBe(KEPT);
   });
 
   it("starts over once, for its own person, from a button in an ephemeral message", async () => {
@@ -275,9 +272,9 @@ describe("components through the interaction handler (DC-207)", () => {
       2,
     );
     const [turn] = h.agent.started;
-    expect(turn?.sessionGeneration).toBe(1);
     expect(turn?.sessionId).toBeUndefined();
-    expect(h.agent.targets[0]?.sessionId).not.toBe(sessionUidOf(IN_THREAD, 0));
+    expect(h.agent.targets[0]?.sessionId).toBe(h.agent.minted[0]);
+    expect(h.agent.minted[0]).not.toBe(KEPT);
   });
 
   it("opens a new session uid on the next mention after the Start over press (DC-202)", async () => {
@@ -305,14 +302,12 @@ describe("components through the interaction handler (DC-207)", () => {
     });
     const [turn] = h.agent.started;
     expect(turn?.prompt).toBe("Start fresh");
-    expect(turn?.sessionGeneration).toBe(1);
-    // No session kept: the agent client opens the uid the shape derives
-    // for generation 1, a new one.
+    // No session kept: the runtime mints a new one, kept for generation 1.
     expect(turn?.sessionId).toBeUndefined();
-    expect(discordShape.sessionUidOf(turn!)).toBe(sessionUidOf(IN_THREAD, 1));
-    expect(discordShape.sessionUidOf(turn!)).not.toBe(
-      sessionUidOf(IN_THREAD, 0),
-    );
-    expect((await h.store.thread(threadIdOf(IN_THREAD)))?.generation).toBe(1);
+    expect(await h.store.thread(threadIdOf(IN_THREAD))).toMatchObject({
+      generation: 1,
+      sessionUid: h.agent.minted[0],
+    });
+    expect(h.agent.minted[0]).not.toBe(KEPT);
   });
 });

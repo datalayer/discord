@@ -390,6 +390,8 @@ export class FakeAgent
     target: Record<string, unknown>;
   }> = [];
   readonly stopped: string[] = [];
+  /** The sessions it opened, as the runtime mints them: ULIDs. */
+  readonly minted: string[] = [];
   script: Script = [{ kind: "text", text: "Hello." }, { kind: "completion" }];
   refuse?: Error;
   /** Called when a turn starts, before its stream: what a concurrency test waits on. */
@@ -404,7 +406,7 @@ export class FakeAgent
     const script = this.script;
     const clock = this.clock;
     const run: { id?: string } = {};
-    const sessionId = request.sessionId ?? `discord-${"0".repeat(40)}`;
+    const sessionId = request.sessionId ?? this.#mint();
     this.targets.push({ sessionId, target: discordShape.targetOf(request) });
     return {
       run,
@@ -424,6 +426,12 @@ export class FakeAgent
 
   async stopTurn(sessionId: string): Promise<void> {
     this.stopped.push(sessionId);
+  }
+
+  #mint(): string {
+    const uid = `01KA${String(this.minted.length + 1).padStart(22, "0")}`;
+    this.minted.push(uid);
+    return uid;
   }
 
   async bindSession(

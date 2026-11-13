@@ -15,8 +15,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { DiscordError, HttpDiscordPort } from "../../src/discord-port.js";
 import {
   discordShape,
-  sessionUidOf,
   type DiscordTurn,
+  threadIdOf,
 } from "../../src/domain.js";
 import { DiscordRateLimiter } from "../../src/rate-limit.js";
 import { EPHEMERAL } from "../../src/render.js";
@@ -110,11 +110,13 @@ describe("/ask end to end (DC-105)", () => {
       h.job({ key: thread, n: 901, threadFromOriginal: false }),
     );
     expect(h.agent.started).toHaveLength(2);
-    expect(h.agent.started[1]?.sessionId).toBe(
-      h.agent.started[0]?.sessionId ?? `discord-${"0".repeat(40)}`,
-    );
-    expect(sessionUidOf(thread)).toBe(
-      sessionUidOf({ ...thread, channelId: CHANNEL, parentId: undefined }),
+    // The session the runtime minted for the first turn, kept on the
+    // thread's binding: the first `/ask` and its thread share one key.
+    expect(h.agent.started[0]?.sessionId).toBeUndefined();
+    expect(h.agent.started[1]?.sessionId).toBe(h.agent.minted[0]);
+    expect(h.agent.minted).toHaveLength(1);
+    expect(threadIdOf(thread)).toBe(
+      threadIdOf({ ...thread, channelId: CHANNEL, parentId: undefined }),
     );
     expect(h.port.count("startThread")).toBe(1);
   });
@@ -863,15 +865,13 @@ const STREAM = (session: string, ...texts: string[]) =>
     { headers: { "content-type": "text/event-stream" } },
   );
 
+/** A session's uid as the runtime mints it: a ULID. */
+const MINTED = "01KA1B2C3D4E5F6G7H8J9K0M1N";
+
 describe("/ask through the real clients (DC-105)", () => {
   it("PUTs the channel's message as the target, then the thread once it is started", async () => {
     const original = id(500);
-    const session = sessionUidOf({
-      applicationId: APPLICATION,
-      channelId: CHANNEL,
-      guildId: GUILD,
-      thread: original,
-    });
+    const session = MINTED;
     const w = wired((method, url) => {
       if (url.endsWith("/messages/@original") && method === "GET")
         return Response.json({ channel_id: CHANNEL, id: original });
@@ -919,12 +919,7 @@ describe("/ask through the real clients (DC-105)", () => {
 
   it("honours a 429 on an edit during a turn: waits retry_after, counts it, and the answer still arrives", async () => {
     const original = id(500);
-    const session = sessionUidOf({
-      applicationId: APPLICATION,
-      channelId: CHANNEL,
-      guildId: GUILD,
-      thread: original,
-    });
+    const session = MINTED;
     let patches = 0;
     const w = wired((method, url) => {
       if (url.endsWith("/messages/@original") && method === "GET")

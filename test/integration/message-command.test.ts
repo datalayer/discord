@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { DiscordError } from "../../src/discord-port.js";
-import { sessionUidOf, threadIdOf } from "../../src/domain.js";
+import { threadIdOf } from "../../src/domain.js";
 import type { InteractionJob } from "../../src/interactions.js";
 import { EPHEMERAL, POST_LABEL } from "../../src/render.js";
 import { WORDS } from "../../src/words.js";
@@ -130,14 +130,9 @@ describe("Ask Datalayer on a message (DC-206)", () => {
     h.port.originalId = id(777);
     await h.worker.handle(submitted(h, ALICE, 954, "Check it.", true));
     const [turn] = h.agent.started;
-    const threadSession = sessionUidOf({
-      applicationId: APPLICATION,
-      channelId: id(500),
-      guildId: GUILD,
-      parentId: CHANNEL,
-      thread: id(500),
-    });
-    expect(h.agent.targets[0]?.sessionId).not.toBe(threadSession);
+    // A new session, the runtime's, never the thread's.
+    expect(turn?.sessionId).toBeUndefined();
+    expect(h.agent.targets[0]?.sessionId).toBe(h.agent.minted[0]);
     expect(
       await h.store.thread(
         threadIdOf({
