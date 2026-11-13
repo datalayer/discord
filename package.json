@@ -1,6 +1,6 @@
 {
   "name": "@datalayer/discord",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "The @Datalayer Discord application",
   "author": "Datalayer",
@@ -11,7 +11,7 @@
     "node": ">=22.20.0"
   },
   "config": {
-    "agentRuntimesVersion": "1.6.34"
+    "agentRuntimesVersion": "1.6.39"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -42,7 +42,7 @@
     "zod": "4.6.7"
   },
   "peerDependencies": {
-    "@datalayer/agent-runtimes": ">=1.6.34 <2"
+    "@datalayer/agent-runtimes": ">=1.6.39 <2"
   },
   "peerDependenciesMeta": {
     "@datalayer/agent-runtimes": {
