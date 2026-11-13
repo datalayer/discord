@@ -35,14 +35,7 @@ import {
   type DiscordTurnRequest,
 } from "./domain.js";
 import { eventsRoute } from "./events.js";
-import {
-  Gateway,
-  gatewayBot,
-  PostgresLeaderLock,
-  systemTimers,
-  webSocket,
-  type LeaderLock,
-} from "./gateway.js";
+import { Gateway, gatewayBot, systemTimers, webSocket } from "./gateway.js";
 import { interactionsRoute } from "./interactions.js";
 import { CALLBACK_PATH, INSTALL_PATH, oauthRoutes } from "./oauth.js";
 import { LOG_SALT } from "./observability.js";
@@ -60,7 +53,7 @@ import { TOKEN_LIFETIME_MS, Worker } from "./worker.js";
  */
 const config = readConfig();
 const logger = new Logger(undefined, undefined, LOG_SALT);
-const resources = createResources(config);
+const resources = await createResources(config);
 const { store, cipher, queue } = resources;
 const role = config.DATALAYER_DISCORD_ROLE;
 
@@ -204,24 +197,16 @@ const server = createHttpServer(resources.checks, routes, (error) =>
   logger.info("service.started", {
     port: config.PORT,
     role,
-    store: config.DATABASE_URL ? "postgres" : "memory",
+    store: config.DATALAYER_SOLR_URL ? "solr" : "memory",
   }),
 );
 
 // The one gateway connection: the replica holding the leader lock (DC-201).
 let gateway: Gateway | undefined;
 if (role === "gateway" || role === "all") {
-  const lock: LeaderLock = config.DATABASE_URL
-    ? new PostgresLeaderLock(
-        config.DATABASE_URL,
-        `discord-gateway:${config.DATALAYER_DISCORD_APPLICATION_ID}`,
-      )
-    : // One process without a database (development): it alone leads.
-      {
-        acquire: async () => true,
-        held: async () => true,
-        release: async () => undefined,
-      };
+  const lock = resources.leaderLock(
+    `discord-gateway:${config.DATALAYER_DISCORD_APPLICATION_ID}`,
+  );
   gateway = new Gateway({
     applicationId: config.DATALAYER_DISCORD_APPLICATION_ID,
     bot: gatewayBot(config.DATALAYER_DISCORD_BOT_TOKEN),
@@ -253,16 +238,7 @@ if (role === "gateway" || role === "all") {
     forget: (applicationId) => ports.forget(applicationId),
     hosts,
     lockOf: (applicationId) =>
-      config.DATABASE_URL
-        ? new PostgresLeaderLock(
-            config.DATABASE_URL,
-            `discord-gateway:${applicationId}`,
-          )
-        : {
-            acquire: async () => true,
-            held: async () => true,
-            release: async () => undefined,
-          },
+      resources.leaderLock(`discord-gateway:${applicationId}`),
     logger,
     socket: webSocket,
     store,

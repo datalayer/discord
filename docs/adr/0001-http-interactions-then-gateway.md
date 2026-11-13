@@ -48,3 +48,10 @@ The interactions endpoint must be deployed before the portal accepts its URL
 (Discord sends a PING). Mentions and DMs wait for Phase 2. A failed
 persistence is answered with an ephemeral refusal, since Discord does not
 retry.
+
+**Amended 13 November 2026:** the durable queue, the store and the gateway's
+leader moved from PostgreSQL to the service's Solr collection (`discord`):
+the queue is `src/solr/queue.ts` (a job claimed by its `_version_`), the
+store `src/solr-store.ts`, and the leader a 30-second lease renewed every
+10 seconds instead of an advisory lock (docs/operations.md, The Solr
+collection). The decision above is otherwise unchanged.

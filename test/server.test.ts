@@ -45,7 +45,7 @@ describe("health and readiness (DC-008)", () => {
   });
 
   it("runs in memory in development: the queue is ready and quotas are counted", async () => {
-    const resources = createResources(readConfig(ENVIRONMENT));
+    const resources = await createResources(readConfig(ENVIRONMENT));
     try {
       expect(await resources.checks.queue?.()).toBe(true);
       expect(

@@ -1,16 +1,12 @@
-import { execFileSync } from "node:child_process";
+import { describe, expect, it } from "vitest";
 
-import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { quotaEntries } from "@datalayer/agent-runtimes/lib/portable/hosts";
 
-import {
-  PostgresQuotaStore,
-  quotaEntries,
-} from "@datalayer/agent-runtimes/lib/portable/hosts";
-
-import { PostgresStore } from "../src/postgres-store.js";
-import { TABLE_PREFIX } from "../src/resources.js";
+import { SolrQuotaStore } from "../src/solr/quotas.js";
+import { documentOf, type SolrRecords } from "../src/solr/records.js";
+import { SolrDiscordStore } from "../src/solr-store.js";
 import { MemoryStore, type DiscordStore } from "../src/store.js";
+import { solrTestUrl, testCollection } from "./support/solr.js";
 import { harness } from "./support/worker.js";
 import {
   ALICE,
@@ -23,15 +19,24 @@ import {
 } from "./support/discord.js";
 
 /**
- * The store's behavior, on memory and on a throwaway PostgreSQL
- * (`DATALAYER_DISCORD_TEST_DATABASE_URL`, never a cluster's): the insert-first turn
- * claim under concurrency, components answered once, the install state spent
- * once, a person forgotten, a removed server purged (DC-105, DC-106, DC-107).
+ * The store's behavior, on memory and, opt-in (`DATALAYER_SOLR_TEST_URL`,
+ * `support/solr.ts`), on a throwaway Solr collection made from the
+ * platform's configset: the turn claim under concurrency, components
+ * answered once, the install state spent once, a person forgotten, a
+ * removed server purged (DC-105, DC-106, DC-107).
  */
-const DATABASE_URL = process.env.DATALAYER_DISCORD_TEST_DATABASE_URL;
+
+/** This file's one collection, made once, emptied of all but its locks before each test. */
+let collection: Promise<SolrRecords> | undefined;
+const solr = async (): Promise<SolrRecords> => {
+  collection ??= testCollection("test_discord_store");
+  const records = await collection;
+  await records.client.deleteWhere("*:* -type_s:lock");
+  return records;
+};
 
 function contract(name: string, make: () => Promise<DiscordStore>) {
-  describe(name, () => {
+  describe(name, { timeout: 60_000 }, () => {
     const now = new Date(Date.UTC(2026, 9, 16, 12));
     const later = (ms: number) => new Date(now.getTime() + ms);
 
@@ -395,33 +400,45 @@ function contract(name: string, make: () => Promise<DiscordStore>) {
 
 contract("the memory store", async () => new MemoryStore());
 
-describe.runIf(Boolean(DATABASE_URL))("on PostgreSQL", () => {
-  let database: pg.Pool;
-  beforeAll(async () => {
-    database = new pg.Pool({ connectionString: DATABASE_URL, max: 10 });
-    await database.query("DROP SCHEMA public CASCADE; CREATE SCHEMA public");
-    execFileSync("node", ["--import", "tsx", "scripts/migrate.ts"], {
-      env: { ...process.env, DATABASE_URL },
-    });
-  }, 60_000);
-  afterAll(async () => {
-    await database?.end();
-  });
-  const truncate = async () =>
-    database.query(
-      "TRUNCATE discord_turn, discord_component, discord_oauth_state, discord_user_link, discord_thread_binding, discord_installation, discord_allowance",
-    );
+describe.skipIf(!solrTestUrl)("on Solr", { timeout: 120_000 }, () => {
+  contract("the Solr store", async () => new SolrDiscordStore(await solr()));
 
-  contract("the PostgreSQL store", async () => {
-    await truncate();
-    return new PostgresStore(database);
+  it("refuses a second installation under one host uid, as its unique index did", async () => {
+    const store = new SolrDiscordStore(await solr());
+    const cipher = testCipher();
+    await store.saveInstallation(installation(cipher));
+    await store.saveInstallation(installation(cipher));
+    await expect(
+      store.saveInstallation(
+        installation(cipher, { guildId: id(4), hostUid: `host-${GUILD}` }),
+      ),
+    ).rejects.toThrow(/unique/);
+    expect(await store.installationByHost(`host-${GUILD}`)).toMatchObject({
+      guildId: GUILD,
+    });
+    expect(await store.installations()).toHaveLength(1);
+  });
+
+  it("keeps the secrets encrypted in the stored record, as PostgreSQL kept them", async () => {
+    const records = await solr();
+    const store = new SolrDiscordStore(records);
+    const cipher = testCipher();
+    const one = installation(cipher);
+    await store.saveInstallation(one);
+    const [doc] = (await records.client.search({ fq: ["type_s:installation"] }))
+      .docs;
+    const stored = String(doc?.record_stored);
+    expect(stored).toContain(one.hostKey.ciphertext);
+    expect(
+      cipher.decrypt(
+        (await store.installation(APPLICATION, GUILD))!.hostKey,
+        `${APPLICATION}:${GUILD}`,
+      ),
+    ).toBe(cipher.decrypt(one.hostKey, `${APPLICATION}:${GUILD}`));
   });
 
   it("takes three of eight concurrent quota takes when three are allowed, all quotas or none (DC-402)", async () => {
-    await database.query("TRUNCATE discord_usage");
-    const quotas = new PostgresQuotaStore(database, {
-      tablePrefix: TABLE_PREFIX,
-    });
+    const quotas = new SolrQuotaStore(await solr());
     const entries = quotaEntries(
       { application: 100, installation: 100, organization: 3, user: 100 },
       {
@@ -454,10 +471,39 @@ describe.runIf(Boolean(DATABASE_URL))("on PostgreSQL", () => {
     ).toBe(3);
   });
 
+  /** A queue job as the Solr queue writes it, in a given state. */
+  const job = async (
+    records: SolrRecords,
+    payload: Record<string, unknown>,
+    state = "ready",
+  ) =>
+    records.client.add([
+      documentOf("job", null, {
+        attempts_i: 0,
+        available_dt: new Date(),
+        kind_s: "other",
+        payload_stored: JSON.stringify(payload),
+        state_s: state,
+      }),
+    ]);
+  const payloads = async (records: SolrRecords) =>
+    (
+      await records.client.search({
+        fq: ["type_s:job"],
+        sort: "uid asc",
+      })
+    ).docs.map((doc) => ({
+      payload: JSON.parse(String(doc.payload_stored)) as Record<
+        string,
+        unknown
+      >,
+      state: String(doc.state_s),
+    }));
+
   it("forgets a person's quota counts and queued or dead requests in every server, never another's or the running one (DC-106)", async () => {
-    await truncate();
-    await database.query("TRUNCATE discord_usage, discord_jobs");
-    const store = new PostgresStore(database);
+    const records = await solr();
+    const store = new SolrDiscordStore(records);
+    const quotas = new SolrQuotaStore(records);
     const other = id(4);
     const usage = [
       `user:${APPLICATION}:${GUILD}:${ALICE}`,
@@ -466,46 +512,38 @@ describe.runIf(Boolean(DATABASE_URL))("on PostgreSQL", () => {
       `installation:${APPLICATION}:${GUILD}`,
     ];
     for (const key of usage)
-      await database.query(
-        "INSERT INTO discord_usage (usage_key, usage_window, used) VALUES ($1, '2026-10-16T12', 1)",
-        [key],
+      await quotas.takeQuota(
+        [{ key, limit: 10, scope: "user" }],
+        "2026-10-16T12",
       );
-    const job = (userId: string, guildId: string, state: string) =>
-      database.query(
-        "INSERT INTO discord_jobs (payload, state) VALUES ($1, $2)",
-        [
-          {
-            id: id(990),
-            key: { applicationId: APPLICATION, channelId: id(3), guildId },
-            kind: "interaction",
-            userId,
-            userName: "someone",
-          },
-          state,
-        ],
-      );
-    await job(ALICE, GUILD, "ready");
-    await job(ALICE, other, "dead");
-    await job(ALICE, GUILD, "processing");
-    await job(BOB, GUILD, "dead");
-    await database.query("INSERT INTO discord_jobs (payload) VALUES ($1)", [
-      { guildId: GUILD, kind: "event", type: "APPLICATION_AUTHORIZED" },
-    ]);
+    const request = (userId: string, guildId: string) => ({
+      id: id(990),
+      key: { applicationId: APPLICATION, channelId: id(3), guildId },
+      kind: "interaction",
+      userId,
+      userName: "someone",
+    });
+    await job(records, request(ALICE, GUILD), "ready");
+    await job(records, request(ALICE, other), "dead");
+    await job(records, request(ALICE, GUILD), "processing");
+    await job(records, request(BOB, GUILD), "dead");
+    await job(records, {
+      guildId: GUILD,
+      kind: "event",
+      type: "APPLICATION_AUTHORIZED",
+    });
     // Two quota counts and two jobs.
     expect(await store.forgetUser(APPLICATION, ALICE)).toBe(4);
-    const { rows: keys } = await database.query<{ usage_key: string }>(
-      "SELECT usage_key FROM discord_usage ORDER BY usage_key",
-    );
-    expect(keys.map((row) => row.usage_key)).toEqual(
-      [usage[3], usage[2]].sort(),
-    );
-    const { rows: jobs } = await database.query<{
-      state: string;
-      user: string | null;
-    }>(
-      "SELECT state, payload->>'userId' AS user FROM discord_jobs ORDER BY id",
-    );
-    expect(jobs).toEqual([
+    for (const [index, key] of usage.entries())
+      expect(await quotas.quotaUsed(key, "2026-10-16T12"), key).toBe(
+        index < 2 ? 0 : 1,
+      );
+    expect(
+      (await payloads(records)).map((one) => ({
+        state: one.state,
+        user: one.payload.userId ?? null,
+      })),
+    ).toEqual([
       { state: "processing", user: ALICE },
       { state: "dead", user: BOB },
       { state: "ready", user: null },
@@ -516,34 +554,26 @@ describe.runIf(Boolean(DATABASE_URL))("on PostgreSQL", () => {
   });
 
   it("drops a spent interaction token from queued and dead jobs, keeping a live one's (DC-102)", async () => {
-    await database.query("TRUNCATE discord_jobs");
-    const store = new PostgresStore(database);
+    const records = await solr();
+    const store = new SolrDiscordStore(records);
     const now = Date.UTC(2026, 9, 16, 12);
-    const job = (n: number, receivedAt: number, state: string) =>
-      database.query(
-        "INSERT INTO discord_jobs (payload, state) VALUES ($1, $2)",
-        [
-          {
-            id: id(n),
-            kind: "interaction",
-            receivedAt,
-            token: { ciphertext: "x", iv: "y", version: 1 },
-            userId: ALICE,
-          },
-          state,
-        ],
-      );
-    await job(980, now - 16 * 60 * 1000, "dead");
-    await job(981, now - 20 * 60 * 1000, "ready");
-    await job(982, now - 60 * 1000, "ready");
-    await database.query("INSERT INTO discord_jobs (payload) VALUES ($1)", [
-      { kind: "event", type: "APPLICATION_AUTHORIZED" },
-    ]);
+    const interaction = (n: number, receivedAt: number) => ({
+      id: id(n),
+      kind: "interaction",
+      receivedAt,
+      token: { ciphertext: "x", iv: "y", version: 1 },
+      userId: ALICE,
+    });
+    await job(records, interaction(980, now - 16 * 60 * 1000), "dead");
+    await job(records, interaction(981, now - 20 * 60 * 1000));
+    await job(records, interaction(982, now - 60 * 1000));
+    await job(records, { kind: "event", type: "APPLICATION_AUTHORIZED" });
     expect(await store.dropSpentTokens(new Date(now - 15 * 60 * 1000))).toBe(2);
-    const { rows } = await database.query<{ id: string; kept: boolean }>(
-      "SELECT payload->>'id' AS id, payload ? 'token' AS kept FROM discord_jobs WHERE payload->>'kind' = 'interaction' ORDER BY id",
-    );
-    expect(rows).toEqual([
+    expect(
+      (await payloads(records))
+        .filter((one) => one.payload.kind === "interaction")
+        .map((one) => ({ id: one.payload.id, kept: "token" in one.payload })),
+    ).toEqual([
       { id: id(980), kept: false },
       { id: id(981), kept: false },
       { id: id(982), kept: true },
@@ -552,8 +582,7 @@ describe.runIf(Boolean(DATABASE_URL))("on PostgreSQL", () => {
   });
 
   it("gives one turn for two concurrent copies of one /ask (DC-105)", async () => {
-    await truncate();
-    const store = new PostgresStore(database);
+    const store = new SolrDiscordStore(await solr());
     const one = harness(store, "one");
     await store.saveInstallation(installation(one.cipher));
     one.hosts.links.set(ALICE, "principal-alice");
@@ -565,7 +594,7 @@ describe.runIf(Boolean(DATABASE_URL))("on PostgreSQL", () => {
     one.agent.onStart = () => gate;
     two.agent.onStart = () => gate;
     const both = Promise.all([one.worker.handle(job), two.worker.handle(job)]);
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
     release();
     await both;
     expect(one.agent.started.length + two.agent.started.length).toBe(1);

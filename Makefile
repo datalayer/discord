@@ -24,7 +24,12 @@
 # 0.1.8: deliveries under Datalayer's own key — the delivery secret kept with its key and version, a push
 #        naming the key kept, a keyless secret accepted until 31 December 2026 only, the webhook registered
 #        again when Datalayer asks (agent-runtimes 1.6.34's DeliveryRenewal; needs ai-agents 0.0.135).
-VERSION ?= 0.1.8
+# 0.1.9: pushed 13 November 2026 from f35c9a4 (v0.1.1) without this file's bump: a thread's session uid is
+#        the runtime's ULID (agent-runtimes 1.6.39).
+# 0.1.10: v0.2.0 — the store, the queue, quotas, dead letters and the gateway's leader lease in the cluster's
+#        Solr collection `discord` (src/solr/), PostgreSQL gone: no migrations, no database roles,
+#        DATALAYER_SOLR_* in place of DATABASE_URL; agent-runtimes 1.6.41.
+VERSION ?= 0.1.10
 REGISTRY ?= $(DATALAYER_DOCKER_REGISTRY)
 EXPORT := $(HOME)/.cache/discord-export-$(shell git rev-parse --short HEAD)
 

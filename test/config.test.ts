@@ -9,9 +9,10 @@ describe("the configuration (DC-008)", () => {
     expect(config).toMatchObject({
       DATALAYER_DELIVERY_POLL_SECONDS: 30,
       DATALAYER_DISCORD_TOKEN_ENCRYPTION_KEY_VERSION: 1,
+      DATALAYER_DISCORD_SOLR_COLLECTION: "discord",
       PORT: 3000,
     });
-    expect(config.DATABASE_URL).toBeUndefined();
+    expect(config.DATALAYER_SOLR_URL).toBeUndefined();
   });
 
   it.each([
@@ -49,20 +50,48 @@ describe("the configuration (DC-008)", () => {
     ).toThrow(/DATALAYER_DISCORD_APP_URL/);
   });
 
-  it("refuses production, or a split role, without PostgreSQL", () => {
+  it("refuses production, or a split role, without Solr and its credentials", () => {
     expect(() =>
       readConfig({ ...ENVIRONMENT, NODE_ENV: "production" }),
-    ).toThrow(/DATABASE_URL: production keeps its work in PostgreSQL/);
+    ).toThrow(/DATALAYER_SOLR_URL: production keeps its work in Solr/);
     expect(() =>
       readConfig({ ...ENVIRONMENT, DATALAYER_DISCORD_ROLE: "worker" }),
-    ).toThrow(/DATABASE_URL: the worker role shares its durable queue/);
-    expect(
+    ).toThrow(
+      /DATALAYER_SOLR_PASSWORD: the worker role shares its durable queue/,
+    );
+    const solr = {
+      DATALAYER_SOLR_PASSWORD: "test-only-not-a-password",
+      DATALAYER_SOLR_URL: "http://solr.example:8983/solr",
+      DATALAYER_SOLR_USERNAME: "discord",
+    };
+    expect(() =>
       readConfig({
         ...ENVIRONMENT,
-        DATABASE_URL: "postgres://x@localhost/discord",
-        NODE_ENV: "production",
-      }).NODE_ENV,
-    ).toBe("production");
+        ...solr,
+        DATALAYER_SOLR_PASSWORD: undefined,
+      }),
+    ).toThrow(/DATALAYER_SOLR_PASSWORD/);
+    expect(() =>
+      readConfig({
+        ...ENVIRONMENT,
+        ...solr,
+        DATALAYER_SOLR_URL: "http://solr.example:8983",
+      }),
+    ).toThrow(/DATALAYER_SOLR_URL: Solr's base URL/);
+    expect(() =>
+      readConfig({
+        ...ENVIRONMENT,
+        ...solr,
+        DATALAYER_DISCORD_SOLR_COLLECTION: "Discord!",
+      }),
+    ).toThrow(/DATALAYER_DISCORD_SOLR_COLLECTION/);
+    const config = readConfig({
+      ...ENVIRONMENT,
+      ...solr,
+      NODE_ENV: "production",
+    });
+    expect(config.NODE_ENV).toBe("production");
+    expect(config.DATALAYER_DISCORD_SOLR_COLLECTION).toBe("discord");
   });
 
   it("names every setting the README documents", async () => {

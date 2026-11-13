@@ -1,11 +1,9 @@
-import pg from "pg";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   answers,
   Gateway,
   INTENTS,
-  PostgresLeaderLock,
   RESUME_CLOSE,
   type GatewayBot,
   type GatewayMessage,
@@ -15,6 +13,8 @@ import {
   type MessageJob,
   type SocketEvents,
 } from "../../src/gateway.js";
+import { SolrLeaderLock } from "../../src/solr-store.js";
+import { solrTestUrl, testCollection } from "../support/solr.js";
 import {
   ALICE,
   APPLICATION,
@@ -490,29 +490,26 @@ describe("the gateway role (DC-201)", () => {
   });
 });
 
-const DATABASE_URL = process.env.DATALAYER_DISCORD_TEST_DATABASE_URL;
-
-describe.runIf(Boolean(DATABASE_URL))(
-  "the leader lock on PostgreSQL (DC-201)",
-  () => {
-    it("lets one replica lead; a lost connection loses the lock, which the other then takes", async () => {
-      const key = `discord-gateway:test-${Date.now()}`;
-      const one = new PostgresLeaderLock(DATABASE_URL!, key);
-      const two = new PostgresLeaderLock(DATABASE_URL!, key);
-      expect(await one.acquire()).toBe(true);
-      expect(await two.acquire()).toBe(false);
-      expect(await one.held()).toBe(true);
-      // The leader's connection ends (a pod killed): its lock goes with it.
-      const admin = new pg.Client({ connectionString: DATABASE_URL });
-      await admin.connect();
-      await admin.query(
-        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'datalayer-discord-gateway' AND pid <> pg_backend_pid()",
-      );
-      await admin.end();
-      expect(await one.held()).toBe(false);
-      expect(await two.acquire()).toBe(true);
-      await one.release();
-      await two.release();
-    });
-  },
-);
+describe.skipIf(!solrTestUrl)("the leader lease on Solr (DC-201)", () => {
+  it("lets one replica lead; a leader that stops renewing loses the lease, which the other then takes", async () => {
+    const records = await testCollection("test_discord_gateway");
+    const key = `discord-gateway:test-${Date.now()}`;
+    const one = new SolrLeaderLock(records, key, 2_000);
+    const two = new SolrLeaderLock(records, key, 2_000);
+    expect(await one.acquire()).toBe(true);
+    expect(await one.acquire()).toBe(true);
+    expect(await two.acquire()).toBe(false);
+    expect(await one.held()).toBe(true);
+    expect(await two.held()).toBe(false);
+    // The leader stops renewing (a pod killed, or cut off from Solr): its
+    // lease runs out and the other replica takes it.
+    await new Promise((resolve) => setTimeout(resolve, 2_500));
+    expect(await two.acquire()).toBe(true);
+    expect(await one.held()).toBe(false);
+    expect(await one.acquire()).toBe(false);
+    // Given back, it is free at once.
+    await two.release();
+    expect(await one.acquire()).toBe(true);
+    await one.release();
+  }, 60_000);
+});

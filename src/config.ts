@@ -23,8 +23,21 @@ const schema = z
      * development, tests). Production runs each apart.
      */
     DATALAYER_DISCORD_ROLE: z.enum(["all", "ingress", "worker", "gateway"]),
-    /** The durable store; only development and tests may run without one. */
-    DATABASE_URL: secret.optional(),
+    /**
+     * The durable store: Solr's base URL (`.../solr`), its credentials and
+     * the service's collection. Only development and tests may run without
+     * them, in memory.
+     */
+    DATALAYER_SOLR_URL: z
+      .url()
+      .regex(/\/solr\/?$/, "Solr's base URL, ending in /solr")
+      .optional(),
+    DATALAYER_SOLR_USERNAME: secret.optional(),
+    DATALAYER_SOLR_PASSWORD: secret.optional(),
+    DATALAYER_DISCORD_SOLR_COLLECTION: z
+      .string()
+      .regex(/^[a-z][a-z0-9_-]*$/, "a Solr collection name")
+      .default("discord"),
     DATALAYER_DISCORD_APPLICATION_ID: snowflake,
     /** The application's Ed25519 public key, hex: what every interaction is verified with. */
     DATALAYER_DISCORD_PUBLIC_KEY: z
@@ -50,18 +63,22 @@ const schema = z
       .default(30),
   })
   .superRefine((value, context) => {
-    if (value.NODE_ENV === "production" && !value.DATABASE_URL)
-      context.addIssue({
-        code: "custom",
-        path: ["DATABASE_URL"],
-        message: "production keeps its work in PostgreSQL",
-      });
-    if (value.DATALAYER_DISCORD_ROLE !== "all" && !value.DATABASE_URL)
-      context.addIssue({
-        code: "custom",
-        path: ["DATABASE_URL"],
-        message: `the ${value.DATALAYER_DISCORD_ROLE} role shares its durable queue in PostgreSQL`,
-      });
+    const why =
+      value.NODE_ENV === "production"
+        ? "production keeps its work in Solr"
+        : value.DATALAYER_DISCORD_ROLE !== "all"
+          ? `the ${value.DATALAYER_DISCORD_ROLE} role shares its durable queue in Solr`
+          : value.DATALAYER_SOLR_URL
+            ? "the Solr collection is reached with its credentials"
+            : undefined;
+    if (!why) return;
+    for (const name of [
+      "DATALAYER_SOLR_URL",
+      "DATALAYER_SOLR_USERNAME",
+      "DATALAYER_SOLR_PASSWORD",
+    ] as const)
+      if (!value[name])
+        context.addIssue({ code: "custom", message: why, path: [name] });
   });
 
 export type Config = z.infer<typeof schema>;

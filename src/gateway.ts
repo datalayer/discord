@@ -1,5 +1,4 @@
 import type { Logger } from "@datalayer/agent-runtimes/lib/portable/hosts";
-import pg from "pg";
 
 /**
  * The gateway role (DC-201): one connection to Discord's gateway for the
@@ -48,11 +47,11 @@ export type SocketEvents = Readonly<{
 
 export type SocketFactory = (url: string, on: SocketEvents) => GatewaySocket;
 
-/** The one leader: PostgreSQL's advisory lock in production. */
+/** The one leader: a lease in the Solr collection in production (`SolrLeaderLock`). */
 export interface LeaderLock {
   /** Take the lock if free: whether this replica now leads. */
   acquire(): Promise<boolean>;
-  /** Whether it is still held (the lock's connection alive). */
+  /** Whether it is still held: in production, the lease renewed. */
   held(): Promise<boolean>;
   release(): Promise<void>;
 }
@@ -549,61 +548,3 @@ export const systemTimers: GatewayTimers = {
   now: () => Date.now(),
   set: (run, ms) => setTimeout(run, ms),
 };
-
-/**
- * The leader lock: a session-level advisory lock on a connection of its
- * own. Held while that connection lives; a lost connection is a lost lock,
- * which another replica then takes.
- */
-export class PostgresLeaderLock implements LeaderLock {
-  #client: pg.Client | undefined;
-  #alive = false;
-
-  constructor(
-    readonly connectionString: string,
-    readonly key: string,
-  ) {}
-
-  async acquire(): Promise<boolean> {
-    if (this.#client && this.#alive) return true;
-    const client = new pg.Client({
-      application_name: "datalayer-discord-gateway",
-      connectionString: this.connectionString,
-    });
-    client.on("error", () => {
-      this.#alive = false;
-    });
-    client.on("end", () => {
-      this.#alive = false;
-    });
-    await client.connect();
-    const { rows } = await client.query<{ taken: boolean }>(
-      "SELECT pg_try_advisory_lock(hashtext($1)) AS taken",
-      [this.key],
-    );
-    if (!rows[0]?.taken) {
-      await client.end();
-      return false;
-    }
-    this.#client = client;
-    this.#alive = true;
-    return true;
-  }
-
-  async held(): Promise<boolean> {
-    if (!this.#client || !this.#alive) return false;
-    try {
-      await this.#client.query("SELECT 1");
-      return this.#alive;
-    } catch {
-      return false;
-    }
-  }
-
-  async release(): Promise<void> {
-    const client = this.#client;
-    this.#client = undefined;
-    this.#alive = false;
-    if (client) await client.end().catch(() => undefined);
-  }
-}

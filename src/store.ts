@@ -10,9 +10,9 @@ import type { NotificationMode } from "./render.js";
 /**
  * What the service keeps: installations, link status,
  * thread bindings, the running turn's claim, components, the allowance cache
- * and the install's one-use state. PostgreSQL in production
- * (`postgres-store.ts`); this memory store in development and tests, with
- * the same behavior, held by the same tests.
+ * and the install's one-use state. The service's Solr collection in
+ * production (`solr-store.ts`); this memory store in development and tests,
+ * with the same behavior, held by the same tests.
  */
 
 export type InstallationState = "active" | "paused" | "removed";
@@ -180,8 +180,8 @@ export interface DiscordStore extends DeliveryClaimStore {
    * Every row naming a person in every server of the application, gone or
    * no longer naming them (`/datalayer forget`): link status, the
    * threads they opened, the components they own or answered, their quota
-   * counts and their queued or dead jobs (PostgreSQL; the memory store's
-   * queue and counts are process memory). How many rows.
+   * counts and their queued or dead jobs (Solr; the memory store's queue
+   * and counts are process memory). How many records.
    */
   forgetUser(applicationId: string, userId: string): Promise<number>;
 

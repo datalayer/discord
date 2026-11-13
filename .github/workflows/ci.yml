@@ -12,17 +12,6 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    services:
-      postgres:
-        image: postgres:16.4-alpine
-        env:
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: discord
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
-    env:
-      DATALAYER_DISCORD_TEST_DATABASE_URL: postgres://postgres:test@127.0.0.1:5432/discord
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -47,7 +36,8 @@ jobs:
         run: npm run check:installed
       - name: Commands within Discord's limits (offline)
         run: npm run commands:schema
-      - name: Tests (memory and PostgreSQL)
+      # The Solr tests are opt-in (DATALAYER_SOLR_TEST_URL): the memory store here.
+      - name: Tests
         run: npm test
       - name: Bundle
         run: npm run bundle
@@ -76,8 +66,8 @@ jobs:
           set -euo pipefail
           test "$(docker run --rm --entrypoint id datalayer-discord:ci -u)" != "0"
           docker run --rm --entrypoint sh datalayer-discord:ci -c '
-            test -f dist/index.js && test -f dist/migrate.js && test -f dist/dead-letters.js
-            test -d migrations
+            test -f dist/index.js && test -f dist/dead-letters.js
+            ! test -e dist/migrate.js && ! test -e migrations
             ! test -e node_modules/@datalayer/agent-runtimes
             for forbidden in react react-dom @jupyterlab @lumino @primer @datalayer/reactor tsx esbuild vitest; do
               ! test -e "node_modules/$forbidden" || { echo "node_modules/$forbidden is in the image"; exit 1; }

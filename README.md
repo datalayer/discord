@@ -6,7 +6,7 @@
 
 `@Datalayer` brings a Datalayer application into a Discord server: `/ask` in a channel or thread, the _Ask Datalayer_ message command, `/datalayer` for a person's link and thread, and `/datalayer-admin` for the server. Discord is a host of Datalayer's existing session and approval contracts (the shared host kit in agent-runtimes' `src/portable/hosts`); it is not a separate agent runtime.
 
-The user and administrator documentation is at [datalayer.ai/docs/discord](https://datalayer.ai/docs/discord). The service's settings, roles, database and image are in [`docs/operations.md`](docs/operations.md); the decisions in [`docs/adr/`](docs/adr/). `discord:0.1.4` runs on r1 (the ingress, worker and gateway roles) at `https://discord-dev.datalayer.run` for `Datalayer Dev`; the pilot's host `https://discord.datalayer.run` has its certificate and waits on the pilot application (DC-501).
+The user and administrator documentation is at [datalayer.ai/docs/discord](https://datalayer.ai/docs/discord). The service's settings, roles, Solr collection and image are in [`docs/operations.md`](docs/operations.md); the decisions in [`docs/adr/`](docs/adr/). `discord:0.1.4` runs on r1 (the ingress, worker and gateway roles) at `https://discord-dev.datalayer.run` for `Datalayer Dev`; the pilot's host `https://discord.datalayer.run` has its certificate and waits on the pilot application (DC-501).
 
 ## Creating the Discord applications
 
@@ -95,7 +95,7 @@ DATALAYER_API_URL=https://r1.datalayer.run
 DATALAYER_WEB_URL=https://datalayer.ai
 ```
 
-Without `DATABASE_URL` development keeps everything in memory (a restart forgets installs and links); set it to a local PostgreSQL and run `npm run migrate` to keep them. Then start the service:
+Without `DATALAYER_SOLR_URL` development keeps everything in memory (a restart forgets installs and links); set it, with `DATALAYER_SOLR_USERNAME` and `DATALAYER_SOLR_PASSWORD`, to a Solr whose `discord` collection is made from the platform's configset to keep them. Then start the service:
 
 ```bash
 npm run dev
@@ -176,7 +176,7 @@ User and administrator documentation is published at [datalayer.ai/docs/discord]
 | The install page refuses                        | Start from the Ship tab: its code works once, for ten minutes.                                                                                    |
 | The commands do not appear                      | Registered with `--guild` for that server? `npm run commands:check -- --guild <id>`; server commands never reach direct messages.                 |
 | `/ask` says a permission is missing             | A channel override denies one of the permissions of `src/permissions.ts` to the bot; the answer names it.                                         |
-| Everything is forgotten after a restart         | Development without `DATABASE_URL` keeps memory only: set it and run `npm run migrate`.                                                           |
+| Everything is forgotten after a restart         | Development without `DATALAYER_SOLR_URL` keeps memory only: set it and its credentials.                                                           |
 | The service will not start                      | Its first line names each missing or malformed setting ([`docs/operations.md`](docs/operations.md)).                                              |
 
 ## Checks
@@ -185,4 +185,4 @@ User and administrator documentation is published at [datalayer.ai/docs/discord]
 npm run check
 ```
 
-Formatting, lint, type checking, the bundle-graph gate, the tests and the esbuild bundle; CI runs the same with PostgreSQL.
+Formatting, lint, type checking, the bundle-graph gate, the tests and the esbuild bundle; the Solr tests run when `DATALAYER_SOLR_TEST_URL` names a SolrCloud with the platform's configset uploaded (`DATALAYER_SOLR_TEST_CONFIGSET`).

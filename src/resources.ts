@@ -1,8 +1,6 @@
 import {
   MemoryQuotaStore,
   MemoryWorkQueue,
-  PostgresQuotaStore,
-  PostgresWorkQueue,
   SecretCipher,
   type QuotaStore,
   type ReadinessChecks,
@@ -10,12 +8,13 @@ import {
 } from "@datalayer/agent-runtimes/lib/portable/hosts";
 
 import type { Config } from "./config.js";
-import { createDatabase } from "./database.js";
-import { PostgresStore } from "./postgres-store.js";
+import type { LeaderLock } from "./gateway.js";
+import { SolrClient } from "./solr/client.js";
+import { SolrWorkQueue } from "./solr/queue.js";
+import { SolrQuotaStore } from "./solr/quotas.js";
+import { SolrRecords } from "./solr/records.js";
+import { SolrDiscordStore, SolrLeaderLock } from "./solr-store.js";
 import { MemoryStore, type DiscordStore } from "./store.js";
-
-/** The service's table prefix: `discord_*`. */
-export const TABLE_PREFIX = "discord";
 
 /** What the queue carries. Each kind of durable work joins it with its box (DC-102 on). */
 export type DiscordJob = Readonly<{ kind: string; [field: string]: unknown }>;
@@ -25,51 +24,70 @@ export type Resources = Readonly<{
   queue: WorkQueue<DiscordJob>;
   quotas: QuotaStore;
   store: DiscordStore;
+  /** The leader of one gateway connection, by its key (DC-201). */
+  leaderLock(key: string): LeaderLock;
   /** What `/readyz` asks: the store and the queue, never Discord or Datalayer. */
   checks: ReadinessChecks;
   close(): Promise<void>;
 }>;
 
+/** The Solr settings of a configuration that has them. */
+export function solrSettingsOf(config: Config) {
+  const url = config.DATALAYER_SOLR_URL;
+  const username = config.DATALAYER_SOLR_USERNAME;
+  const password = config.DATALAYER_SOLR_PASSWORD;
+  if (!url || !username || !password)
+    throw new Error(
+      "DATALAYER_SOLR_URL, DATALAYER_SOLR_USERNAME and DATALAYER_SOLR_PASSWORD are required.",
+    );
+  return {
+    collection: config.DATALAYER_DISCORD_SOLR_COLLECTION,
+    password,
+    url,
+    username,
+  };
+}
+
 /**
- * The store, queue and quotas: PostgreSQL when `DATABASE_URL` is set (always
- * in production, which `readConfig` enforces), in memory in development and
- * tests only. The queue and quotas are the shared host kit's under the
- * `discord` prefix.
+ * The store, queue, quotas and leader locks: the service's Solr collection
+ * when `DATALAYER_SOLR_URL` is set (always in production, which
+ * `readConfig` enforces), in memory in development and tests only. The
+ * lock documents are made at start, once.
  */
-export function createResources(config: Config): Resources {
+export async function createResources(config: Config): Promise<Resources> {
   const cipher = new SecretCipher(
     config.DATALAYER_DISCORD_TOKEN_ENCRYPTION_KEY,
     config.DATALAYER_DISCORD_TOKEN_ENCRYPTION_KEY_VERSION,
     "DATALAYER_DISCORD_TOKEN_ENCRYPTION_KEY",
   );
-  if (!config.DATABASE_URL) {
+  if (!config.DATALAYER_SOLR_URL) {
     const queue = new MemoryWorkQueue<DiscordJob>();
     return {
       checks: { queue: () => queue.ready() },
       cipher,
       close: () => queue.stop(),
+      // One process without a collection (development): it alone leads.
+      leaderLock: () => ({
+        acquire: async () => true,
+        held: async () => true,
+        release: async () => undefined,
+      }),
       queue,
       quotas: new MemoryQuotaStore(),
       store: new MemoryStore(),
     };
   }
-  const database = createDatabase(config.DATABASE_URL);
-  const queue = new PostgresWorkQueue<DiscordJob>(database, TABLE_PREFIX);
+  const client = new SolrClient(solrSettingsOf(config));
+  const records = new SolrRecords(client);
+  await records.init();
+  const queue = new SolrWorkQueue<DiscordJob>(records);
   return {
-    checks: {
-      database: async () => {
-        await database.query("SELECT 1");
-        return true;
-      },
-      queue: () => queue.ready(),
-    },
+    checks: { solr: () => client.ready() },
     cipher,
-    close: async () => {
-      await queue.stop();
-      await database.end();
-    },
+    close: () => queue.stop(),
+    leaderLock: (key) => new SolrLeaderLock(records, key),
     queue,
-    quotas: new PostgresQuotaStore(database, { tablePrefix: TABLE_PREFIX }),
-    store: new PostgresStore(database),
+    quotas: new SolrQuotaStore(records),
+    store: new SolrDiscordStore(records),
   };
 }
